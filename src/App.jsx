@@ -4,11 +4,10 @@ import {
   collection, onSnapshot, doc, updateDoc, query, orderBy 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
-import { ro } from 'date-fns/locale';
 import { 
   Activity, Briefcase, Coffee, Home, MapPin, 
   Stethoscope, List, LayoutDashboard, CalendarDays, 
-  Utensils, Check, Lock, LogOut, AlertCircle 
+  Utensils, Check, Lock, LogOut, AlertCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 const statusConfig = {
@@ -28,6 +27,7 @@ function App() {
   const [userLogat, setUserLogat] = useState(null);
   const [inputCod, setInputCod] = useState("");
   const [eroareLogin, setEroareLogin] = useState(false);
+  const [membruEditat, setMembruEditat] = useState(null);
 
   const optiuniZile = [
     { label: 'Azi', data: new Date(), key: format(new Date(), 'yyyyMMdd') },
@@ -35,7 +35,6 @@ function App() {
     { label: 'Poimâine', data: addDays(new Date(), 2), key: format(addDays(new Date(), 2), 'yyyyMMdd') }
   ];
 
-  // 1. EFECT PENTRU VERIFICARE SESIUNE LA PORNIRE (REȚINERE LOGARE)
   useEffect(() => {
     const sesiuneSalvata = localStorage.getItem('userEfectiv');
     if (sesiuneSalvata) {
@@ -51,7 +50,6 @@ function App() {
       const dateEchipa = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEchipa(dateEchipa);
       
-      // Actualizăm datele userului logat dacă se schimbă în baza de date (ex: numele sau gradul)
       if (userLogat && userLogat.rol !== 'admin') {
         const dateNoi = dateEchipa.find(m => m.id === userLogat.id);
         if (dateNoi) {
@@ -96,6 +94,7 @@ function App() {
     const userRef = doc(db, "echipa", id);
     const ziKey = optiuniZile[ziSelectata].key;
     await updateDoc(userRef, { [`status_${ziKey}`]: nouStatus });
+    setMembruEditat(null);
   };
 
   const toggleCantina = async (id, stareActuala) => {
@@ -121,34 +120,26 @@ function App() {
     return acc;
   }, {});
 
-  // ECRAN LOGIN
   if (paginaCurenta === 'login') {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white font-sans">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white">
         <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl w-full max-w-sm text-center">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/20">
+          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/20 text-white">
             <Lock size={32} />
           </div>
-          <h1 className="text-2xl font-black uppercase mb-2 tracking-tighter text-white">Acces Sistem</h1>
-          <p className="text-slate-400 text-xs font-bold uppercase mb-8">Introdu codul de 4 cifre</p>
-          
+          <h1 className="text-2xl font-black uppercase mb-2 tracking-tighter">Acces Sistem</h1>
+          <p className="text-slate-400 text-xs font-bold uppercase mb-8">Introdu codul tău personal</p>
           <div className="space-y-4">
             <input 
               type="password" 
               maxLength="4"
               value={inputCod}
               onChange={(e) => setInputCod(e.target.value)}
-              className={`w-full bg-slate-950 border-2 p-5 rounded-2xl text-center text-4xl tracking-[0.5em] focus:border-blue-500 outline-none transition-all text-white ${eroareLogin ? 'border-red-500 animate-shake' : 'border-slate-800'}`}
+              className={`w-full bg-slate-950 border-2 p-5 rounded-2xl text-center text-4xl tracking-[0.5em] focus:border-blue-500 outline-none transition-all text-white ${eroareLogin ? 'border-red-500' : 'border-slate-800'}`}
               autoFocus
             />
             {eroareLogin && <p className="text-red-500 text-xs font-black uppercase flex items-center justify-center gap-2"><AlertCircle size={14}/> Cod incorect</p>}
-            
-            <button 
-              onClick={() => login(inputCod)}
-              className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black uppercase tracking-widest text-lg shadow-lg active:scale-95 transition-all text-white"
-            >
-              Autentificare
-            </button>
+            <button onClick={() => login(inputCod)} className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black uppercase tracking-widest text-lg shadow-lg active:scale-95 transition-all text-white">Autentificare</button>
           </div>
         </div>
       </div>
@@ -161,7 +152,7 @@ function App() {
         
         {/* HEADER */}
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800 shadow-xl">
-          <div className="flex items-center gap-4 text-white">
+          <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
             <div>
               <p className="text-xs font-black text-blue-400 uppercase leading-none mb-1">{userLogat?.rol === 'admin' ? 'ADMINISTRATOR' : userLogat?.grad}</p>
@@ -179,7 +170,7 @@ function App() {
             <button 
               key={zi.key} 
               onClick={() => setZiSelectata(index)} 
-              className={`flex-1 py-4 rounded-2xl border-2 transition-all ${ziSelectata === index ? 'bg-blue-700 border-blue-400 text-white' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+              className={`flex-1 py-4 rounded-2xl border-2 transition-all ${ziSelectata === index ? 'bg-blue-700 border-blue-400 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
             >
               <p className="text-xs font-black uppercase mb-0.5">{zi.label}</p>
               <p className="text-sm font-bold uppercase text-white">{format(zi.data, 'dd MMM')}</p>
@@ -196,28 +187,84 @@ function App() {
               <button onClick={() => setPaginaCurenta('categorii')} className={`flex-1 py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all ${paginaCurenta === 'categorii' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}><LayoutDashboard size={14}/> SUMAR</button>
             </div>
             
+            {/* ADMIN: LISTĂ PREZENȚĂ */}
             {paginaCurenta === 'lista' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in">
+              <div className="grid grid-cols-1 gap-3 animate-in fade-in">
                 {echipa.map(m => {
                   const status = getStatusMembru(m);
+                  const isEditing = membruEditat === m.id;
                   return (
-                    <div key={m.id} className="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-lg">
-                      <div className="text-white">
-                        <p className="text-[10px] text-blue-400 font-black uppercase mb-1">{m.grad}</p>
-                        <p className="font-black text-base uppercase text-white">{m.nume}</p>
-                      </div>
-                      <span className={`text-[10px] font-black px-3 py-2 rounded-lg border border-white/10 text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>
-                        {status}
-                      </span>
+                    <div key={m.id} className="flex flex-col gap-2">
+                      <button 
+                        onClick={() => setMembruEditat(isEditing ? null : m.id)}
+                        className={`bg-slate-900 p-5 rounded-2xl border transition-all flex justify-between items-center shadow-lg ${isEditing ? 'border-blue-500' : 'border-slate-800'}`}
+                      >
+                        <div className="text-left">
+                          <p className="text-[10px] text-blue-400 font-black uppercase mb-1">{m.grad}</p>
+                          <p className="font-black text-base uppercase text-white">{m.nume}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-[10px] font-black px-4 py-2 rounded-lg border border-white/10 text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>
+                            {status}
+                          </span>
+                          {isEditing ? <ChevronUp size={20} className="text-blue-500" /> : <ChevronDown size={20} className="text-slate-600" />}
+                        </div>
+                      </button>
+
+                      {isEditing && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl -mt-4 animate-in slide-in-from-top-4">
+                          {Object.keys(statusConfig).map(st => (
+                            <button 
+                              key={st} 
+                              onClick={() => schimbaStatus(m.id, st)}
+                              className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${status === st ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 border-slate-800 text-white hover:bg-slate-800'}`}
+                            >
+                              {statusConfig[st].icon}
+                              <span className="text-[10px] font-black uppercase">{st}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             )}
 
+            {/* ADMIN: SUMAR CATEGORII (ACTUALIZAT - TEXT MARE) */}
+            {paginaCurenta === 'categorii' && (
+              <div className="grid grid-cols-1 gap-4 animate-in fade-in">
+                {Object.entries(categorii).map(([nume, oameni]) => (
+                  <div key={nume} className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
+                    <div className="flex justify-between items-center mb-6 pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${statusConfig[nume]?.color || 'bg-slate-800'} text-white`}>
+                          {statusConfig[nume]?.icon}
+                        </div>
+                        <span className="text-base font-black uppercase text-white tracking-tight">{nume}</span>
+                      </div>
+                      <span className="bg-blue-600 px-4 py-1.5 rounded-full text-sm font-black text-white shadow-lg">{oameni.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {oameni.map(o => (
+                        <div key={o.id} className="bg-slate-950 px-5 py-3 rounded-2xl border border-slate-700 shadow-inner">
+                          <p className="text-[9px] font-black text-blue-500 uppercase leading-none mb-1">{o.grad}</p>
+                          <p className="text-sm font-black text-white uppercase tracking-wide">{o.nume}</p>
+                        </div>
+                      ))}
+                      {oameni.length === 0 && (
+                        <p className="text-sm font-bold text-slate-600 uppercase italic py-2">Niciun membru în această categorie</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ADMIN: CANTINĂ */}
             {paginaCurenta === 'cantina' && (
               <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-2xl animate-in zoom-in">
-                 <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-800 text-white">
+                 <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-800">
                     <div>
                       <h2 className="text-lg font-black uppercase text-orange-500">Comandă Cantină</h2>
                       <p className="text-xs text-slate-400 font-bold uppercase">{optiuniZile[ziSelectata].label}</p>
@@ -238,22 +285,6 @@ function App() {
                      );
                    })}
                  </div>
-              </div>
-            )}
-
-            {paginaCurenta === 'categorii' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
-                {Object.entries(categorii).map(([nume, oameni]) => (
-                  <div key={nume} className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-md">
-                    <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800">
-                      <span className="text-xs font-black uppercase text-white">{nume}</span>
-                      <span className="bg-blue-600 px-3 py-1 rounded-full text-[10px] font-black text-white">{oameni.length}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {oameni.map(o => <span key={o.id} className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-[10px] font-bold text-white uppercase">{o.nume}</span>)}
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </div>
