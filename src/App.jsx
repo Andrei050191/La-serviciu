@@ -104,7 +104,7 @@ function App() {
           ))}
         </div>
 
-        {/* HEADER */}
+        {/* HEADER CU 3 BUTOANE */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-2xl">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
@@ -119,55 +119,20 @@ function App() {
           </div>
           
           <div className="flex bg-slate-950 p-1.5 rounded-xl mt-4 md:mt-0 border border-slate-800">
-            <button onClick={() => setPaginaCurenta('lista')} className={`px-5 py-2 rounded-lg flex items-center gap-2 text-xs font-black transition-all ${paginaCurenta === 'lista' ? 'bg-blue-700 text-white shadow-md' : 'text-slate-400'}`}><List size={16}/> LISTĂ</button>
-            <button onClick={() => setPaginaCurenta('categorii')} className={`px-5 py-2 rounded-lg flex items-center gap-2 text-xs font-black transition-all ${paginaCurenta === 'categorii' ? 'bg-blue-700 text-white shadow-md' : 'text-slate-400'}`}><LayoutDashboard size={16}/> SUMAR</button>
+            <button onClick={() => setPaginaCurenta('lista')} className={`px-4 py-2 rounded-lg flex items-center gap-2 text-[10px] font-black transition-all ${paginaCurenta === 'lista' ? 'bg-blue-700 text-white shadow-md' : 'text-slate-400'}`}><List size={14}/> LISTĂ</button>
+            
+            {/* BUTONUL 3: MASA (Apare doar pentru Mâine) */}
+            {ziSelectata === 1 && (
+              <button onClick={() => setPaginaCurenta('cantina')} className={`px-4 py-2 rounded-lg flex items-center gap-2 text-[10px] font-black transition-all ${paginaCurenta === 'cantina' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-400'}`}><Utensils size={14}/> MASĂ</button>
+            )}
+
+            <button onClick={() => setPaginaCurenta('categorii')} className={`px-4 py-2 rounded-lg flex items-center gap-2 text-[10px] font-black transition-all ${paginaCurenta === 'categorii' ? 'bg-blue-700 text-white shadow-md' : 'text-slate-400'}`}><LayoutDashboard size={14}/> SUMAR</button>
           </div>
         </div>
 
-        {/* SECTIUNE CANTINA - DOAR PENTRU MÂINE (INDEX 1) */}
-        {paginaCurenta === 'lista' && ziSelectata === 1 && (
-          <div className="mb-8 bg-slate-900 border border-slate-800 p-6 rounded-[2rem] shadow-2xl animate-in slide-in-from-top duration-500">
-            <div className="flex items-center justify-between mb-6 border-b border-slate-800 pb-4">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-orange-600/20 rounded-xl flex items-center justify-center text-orange-500 border border-orange-500/30">
-                  <Utensils size={20} />
-                </div>
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-widest text-white">Comandă Cantină Mâine</h2>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase italic">Bifați persoanele pentru hrană</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 bg-orange-600 px-4 py-1.5 rounded-full border border-orange-400 shadow-lg">
-                <span className="text-xs font-black text-white">{totalLaCantina}</span>
-                <span className="text-[10px] font-black text-orange-100 uppercase tracking-tighter">Persoane</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-              {echipa.map((m) => {
-                const bifat = esteLaCantina(m);
-                return (
-                  <button
-                    key={`c-${m.id}`}
-                    onClick={() => toggleCantina(m)}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition-all active:scale-95 ${
-                      bifat 
-                      ? 'bg-orange-600 border-orange-400 text-white shadow-lg shadow-orange-900/40' 
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-600'
-                    }`}
-                  >
-                    <span className="text-[10px] font-black uppercase truncate mr-2">{m.nume.split(' ').pop()}</span>
-                    {bifat ? <Check size={12} strokeWidth={4} /> : <div className="w-3 h-3 rounded-full border border-slate-700" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* AFISARE CONTINUT PRINCIPAL */}
-        {paginaCurenta === 'lista' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* PAGINA 1: LISTA PRINCIPALĂ */}
+        {paginaCurenta === 'lista' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in duration-500">
             {echipa.map((m) => {
               const statusActual = getStatusMembru(m);
               return (
@@ -176,46 +141,66 @@ function App() {
                     <div className="w-12 h-12 bg-blue-900/40 rounded-2xl flex items-center justify-center font-black text-blue-400 border border-blue-500/30 text-lg shadow-inner">{m.ordine}</div>
                     <h3 className="font-black text-lg text-white tracking-tight leading-tight uppercase">{m.nume}</h3>
                   </div>
-
                   <div className={`py-4 rounded-2xl mb-6 text-center font-black uppercase text-xs flex items-center justify-center gap-3 shadow-lg border border-white/10 ${statusConfig[statusActual]?.color || 'bg-slate-800 text-slate-300'}`}>
-                    <span className="drop-shadow-md">{statusConfig[statusActual]?.icon}</span>
-                    <span className="text-white drop-shadow-md">{statusActual}</span>
+                    {statusConfig[statusActual]?.icon} <span className="text-white">{statusActual}</span>
                   </div>
-
                   <div className="grid grid-cols-2 gap-2">
                     {Object.keys(statusConfig).map(st => (
-                      <button 
-                        key={st} 
-                        onClick={() => schimbaStatus(m.id, st)}
-                        className={`text-[9px] py-3 rounded-xl border-2 font-black uppercase transition-all active:scale-95 ${statusActual === st ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'bg-slate-800 border-slate-700 text-slate-100 hover:bg-slate-700 hover:border-slate-500'}`}
-                      >
-                        {st}
-                      </button>
+                      <button key={st} onClick={() => schimbaStatus(m.id, st)} className={`text-[9px] py-3 rounded-xl border-2 font-black uppercase transition-all ${statusActual === st ? 'bg-white text-black border-white' : 'bg-slate-800 border-slate-700 text-slate-100 hover:bg-slate-700'}`}>{st}</button>
                     ))}
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in zoom-in duration-300">
+        )}
+
+        {/* PAGINA 2: CANTINA (Apare doar dacă e selectată) */}
+        {paginaCurenta === 'cantina' && ziSelectata === 1 && (
+          <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl animate-in zoom-in duration-300">
+            <div className="flex items-center justify-between mb-8 border-b border-slate-800 pb-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-600/20 rounded-2xl flex items-center justify-center text-orange-500 border border-orange-500/30">
+                  <Utensils size={28} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-widest text-white">Comandă Cantină Mâine</h2>
+                  <p className="text-xs text-slate-500 font-bold uppercase italic">Bifați personalul care servește masa</p>
+                </div>
+              </div>
+              <div className="bg-orange-600 px-6 py-2 rounded-full border border-orange-400 shadow-lg flex items-center gap-3">
+                <span className="text-xl font-black text-white">{totalLaCantina}</span>
+                <span className="text-xs font-black text-orange-100 uppercase">Persoane</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {echipa.map((m) => {
+                const bifat = esteLaCantina(m);
+                return (
+                  <button key={`c-${m.id}`} onClick={() => toggleCantina(m)} className={`flex items-center justify-between px-4 py-4 rounded-2xl border-2 transition-all active:scale-95 ${bifat ? 'bg-orange-600 border-orange-400 text-white shadow-orange-900/40' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-600'}`}>
+                    <span className="text-[11px] font-black uppercase truncate">{m.nume.split(' ').pop()}</span>
+                    {bifat ? <Check size={16} strokeWidth={4} /> : <div className="w-4 h-4 rounded-full border border-slate-700" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* PAGINA 3: SUMAR */}
+        {paginaCurenta === 'categorii' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-300">
             {Object.entries(categorii).map(([nume, oameni]) => (
               <div key={nume} className="bg-slate-900 border border-slate-800 p-6 rounded-[2rem] shadow-xl">
                 <div className="flex justify-between items-center mb-5 border-b border-slate-800 pb-4">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl shadow-lg border border-white/10 ${statusConfig[nume].color}`}>
-                      {statusConfig[nume].icon}
-                    </div>
+                    <div className={`p-2.5 rounded-xl border border-white/10 ${statusConfig[nume].color}`}>{statusConfig[nume].icon}</div>
                     <span className="text-xs font-black uppercase tracking-widest text-white">{nume}</span>
                   </div>
                   <span className="text-xs font-black text-white bg-blue-700 px-4 py-1 rounded-full border border-blue-400">{oameni.length}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {oameni.map(o => (
-                    <span key={o.id} className="bg-slate-950 px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-800 text-white shadow-sm">
-                      {o.nume}
-                    </span>
-                  ))}
+                  {oameni.map(o => <span key={o.id} className="bg-slate-950 px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-800 text-white">{o.nume}</span>)}
                   {oameni.length === 0 && <span className="text-xs text-slate-500 italic px-2">Nicio persoană înregistrată</span>}
                 </div>
               </div>
