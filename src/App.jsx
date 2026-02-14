@@ -35,6 +35,29 @@ function App() {
     { label: 'Poimâine', data: addDays(new Date(), 2), key: format(addDays(new Date(), 2), 'yyyyMMdd') }
   ];
 
+  // FUNCȚIE SPECIALĂ PENTRU FORMATARE NUME (Nume PRENUME)
+  const formatNumeComplet = (numeString) => {
+    if (!numeString) return "";
+    const parti = numeString.trim().split(/\s+/);
+    if (parti.length < 2) return numeString.toUpperCase();
+
+    // Primul cuvânt e Numele (MAJUSCULE), restul sunt Prenumele (Prima mare)
+    const nume = parti[0].toUpperCase();
+    const prenume = parti.slice(1).map(p => 
+      p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()
+    ).join(" ");
+
+    return { nume, prenume };
+  };
+
+  // FUNCȚIE SPECIALĂ PENTRU GRAD (minuscule, dar păstrează cifrele romane)
+  const formatGrad = (grad) => {
+    if (!grad) return "";
+    // Transformă tot în mici, apoi caută cifrele romane și le pune înapoi mari
+    let text = grad.toLowerCase();
+    return text.replace(/\b(iii|ii|i|iv|v|vi)\b/g, (match) => match.toUpperCase());
+  };
+
   useEffect(() => {
     const sesiuneSalvata = localStorage.getItem('userEfectiv');
     if (sesiuneSalvata) {
@@ -128,7 +151,7 @@ function App() {
             <Lock size={32} />
           </div>
           <h1 className="text-2xl font-black uppercase mb-2 tracking-tighter">Acces Sistem</h1>
-          <p className="text-slate-400 text-xs font-bold uppercase mb-8 text-white">Introdu codul tău personal</p>
+          <p className="text-slate-400 text-xs font-bold uppercase mb-8">Introdu codul tău personal</p>
           <div className="space-y-4">
             <input 
               type="password" 
@@ -155,8 +178,17 @@ function App() {
           <div className="flex items-center gap-4 text-white">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
             <div>
-              <p className="text-xs font-black text-blue-400 leading-none mb-1">{userLogat?.rol === 'admin' ? 'Administrator' : userLogat?.grad}</p>
-              <h1 className="text-lg font-black tracking-tight text-white capitalize">{userLogat?.nume?.toLowerCase()}</h1>
+              <p className="text-xs font-bold text-blue-400 leading-none mb-1">
+                {userLogat?.rol === 'admin' ? 'Administrator' : formatGrad(userLogat?.grad)}
+              </p>
+              <h1 className="text-lg font-black tracking-tight text-white">
+                {userLogat?.rol === 'admin' ? 'ADMINISTRATOR' : (
+                  <>
+                    <span className="uppercase">{formatNumeComplet(userLogat?.nume).nume}</span>
+                    <span className="ml-1">{formatNumeComplet(userLogat?.nume).prenume}</span>
+                  </>
+                )}
+              </h1>
             </div>
           </div>
           <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all">
@@ -192,6 +224,7 @@ function App() {
                 {echipa.map(m => {
                   const status = getStatusMembru(m);
                   const isEditing = membruEditat === m.id;
+                  const fNume = formatNumeComplet(m.nume);
                   return (
                     <div key={m.id} className="flex flex-col gap-2">
                       <button 
@@ -199,8 +232,10 @@ function App() {
                         className={`bg-slate-900 p-5 rounded-2xl border transition-all flex justify-between items-center shadow-lg ${isEditing ? 'border-blue-500' : 'border-slate-800'}`}
                       >
                         <div className="text-left">
-                          <p className="text-[10px] text-blue-400 font-black mb-1">{m.grad}</p>
-                          <p className="font-black text-base text-white capitalize">{m.nume?.toLowerCase()}</p>
+                          <p className="text-[11px] text-blue-400 font-bold mb-1">{formatGrad(m.grad)}</p>
+                          <p className="font-black text-base text-white">
+                            <span className="uppercase">{fNume.nume}</span> {fNume.prenume}
+                          </p>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`text-[10px] font-black px-4 py-2 rounded-lg border border-white/10 text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>
@@ -210,15 +245,10 @@ function App() {
                         </div>
                       </button>
                       {isEditing && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl -mt-4 animate-in slide-in-from-top-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl -mt-4">
                           {Object.keys(statusConfig).map(st => (
-                            <button 
-                              key={st} 
-                              onClick={() => schimbaStatus(m.id, st)}
-                              className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${status === st ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 border-slate-800 text-white'}`}
-                            >
-                              {statusConfig[st].icon}
-                              <span className="text-[10px] font-black uppercase">{st}</span>
+                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-3 p-4 rounded-xl border-2 border-slate-800 bg-slate-900 text-white text-[10px] font-black uppercase">
+                              {statusConfig[st].icon} {st}
                             </button>
                           ))}
                         </div>
@@ -241,36 +271,39 @@ function App() {
                       <span className="bg-blue-600 px-4 py-1.5 rounded-full text-sm font-black text-white">{oameni.length}</span>
                     </div>
                     <div className="flex flex-wrap gap-3">
-                      {oameni.map(o => (
-                        <div key={o.id} className="bg-slate-950 px-5 py-3 rounded-2xl border border-slate-700 shadow-inner min-w-[120px]">
-                          <p className="text-[10px] font-black text-blue-500 leading-none mb-1">{o.grad}</p>
-                          <p className="text-base font-black text-white capitalize tracking-wide">{o.nume?.toLowerCase()}</p>
-                        </div>
-                      ))}
+                      {oameni.map(o => {
+                        const fNume = formatNumeComplet(o.nume);
+                        return (
+                          <div key={o.id} className="bg-slate-950 px-5 py-3 rounded-2xl border border-slate-700 shadow-inner min-w-[140px]">
+                            <p className="text-[11px] font-bold text-blue-500 leading-none mb-1">{formatGrad(o.grad)}</p>
+                            <p className="text-base font-black text-white tracking-wide">
+                              <span className="uppercase">{fNume.nume}</span> {fNume.prenume}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
               </div>
             )}
-
+            
             {/* ADMIN: CANTINĂ */}
             {paginaCurenta === 'cantina' && (
-              <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-2xl animate-in zoom-in">
+              <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-2xl">
                  <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-800 text-white">
-                    <div>
-                      <h2 className="text-lg font-black uppercase text-orange-500">Comandă Cantină</h2>
-                      <p className="text-xs text-slate-400 font-bold uppercase">{optiuniZile[ziSelectata].label}</p>
-                    </div>
+                    <h2 className="text-lg font-black uppercase text-orange-500">Comandă Cantină</h2>
                     <div className="bg-orange-600 px-6 py-2 rounded-full text-sm font-black text-white shadow-lg">{totalLaCantina} PERSOANE</div>
                  </div>
                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                    {echipa.map(m => {
                      const bifat = esteLaCantina(m);
+                     const fNume = formatNumeComplet(m.nume);
                      return (
-                       <button key={m.id} onClick={() => toggleCantina(m.id, bifat)} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all ${bifat ? 'bg-orange-600 border-orange-400 text-white' : 'bg-slate-950 border-slate-800 text-white'}`}>
-                         <div className="text-left">
-                           <p className="text-[10px] font-black text-white opacity-70">{m.grad}</p>
-                           <p className="text-sm font-black text-white capitalize">{m.nume?.toLowerCase()}</p>
+                       <button key={m.id} onClick={() => toggleCantina(m.id, bifat)} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all ${bifat ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800'}`}>
+                         <div className="text-left text-white">
+                           <p className="text-[10px] font-bold opacity-70">{formatGrad(m.grad)}</p>
+                           <p className="text-sm font-black"><span className="uppercase">{fNume.nume}</span> {fNume.prenume}</p>
                          </div>
                          {bifat ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>}
                        </button>
@@ -284,7 +317,7 @@ function App() {
 
         {/* --- INTERFAȚA PERSONALĂ (USER) --- */}
         {userLogat?.rol === 'user' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom duration-500">
+          <div className="space-y-6">
             <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-2xl">
               <h2 className="text-center text-xs font-black uppercase tracking-widest text-blue-400 mb-6 italic">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
               <div className="grid grid-cols-1 gap-3">
@@ -302,7 +335,7 @@ function App() {
             </div>
             <div className="bg-orange-600/10 border-2 border-orange-500/30 p-6 rounded-[2.5rem] shadow-2xl">
               <div className="flex items-center gap-4 mb-6">
-                <div className="bg-orange-600 p-3 rounded-2xl text-white shadow-lg shadow-orange-600/20"><Utensils size={28} /></div>
+                <div className="bg-orange-600 p-3 rounded-2xl text-white shadow-lg"><Utensils size={28} /></div>
                 <div>
                   <h2 className="text-lg font-black uppercase text-white">Masa la Cantină</h2>
                   <p className="text-xs text-orange-400 font-bold uppercase tracking-widest">{optiuniZile[ziSelectata].label}</p>
