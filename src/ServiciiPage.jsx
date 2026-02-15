@@ -2,14 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, collection, query, orderBy, setDoc } from 'firebase/firestore';
 import { 
-  Shield, 
-  Lock, 
-  Eye, 
-  Users, 
-  Radio, 
-  Zap, 
-  UserCheck, 
-  ChevronDown 
+  Shield, Lock, Eye, Users, Radio, Zap, UserCheck, ChevronDown 
 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -22,8 +15,7 @@ const ServiciiPage = ({ editabil }) => {
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
 
-  // --- MAPARE ICONIȚE ---
-  const getIcon = (functie, size = 18) => {
+  const getIcon = (functie, size = 16) => {
     switch (functie) {
       case "Ajutor OSU": return <Shield size={size} className="text-blue-400" />;
       case "Sergent de serviciu PCT": return <Lock size={size} className="text-amber-400" />;
@@ -37,9 +29,9 @@ const ServiciiPage = ({ editabil }) => {
     }
   };
 
-  // --- FORMATARE NUME (GRAD MIC, NUME MARE) ---
-  const formatNumeInterfata = (text) => {
-    if (!text || text === "Din altă subunitate") return { grad: "", nume: text };
+  // --- LOGICA DE FORMATARE REUTILIZABILĂ ---
+  const formatareNumeElement = (text) => {
+    if (!text || text === "Din altă subunitate") return { grad: "", nume: text, complet: text };
     
     const cifreRomane = ['I', 'II', 'III', 'IV', 'V'];
     const parti = text.split(' ');
@@ -65,7 +57,12 @@ const ServiciiPage = ({ editabil }) => {
     const prenume = prenumeRaw.charAt(0).toUpperCase() + prenumeRaw.slice(1).toLowerCase();
     const numeleFamilie = parti.slice(indexStartNume + 1).join(' ').toUpperCase();
 
-    return { grad: gradul, nume: `${prenume} ${numeleFamilie}` };
+    const numeFormatat = `${prenume} ${numeleFamilie}`;
+    return { 
+      grad: gradul, 
+      nume: numeFormatat,
+      complet: `${gradul} ${numeFormatat}`
+    };
   };
 
   useEffect(() => {
@@ -102,56 +99,58 @@ const ServiciiPage = ({ editabil }) => {
   });
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-10 pb-24 px-4">
+    <div className="max-w-[1400px] mx-auto space-y-3 pb-20 px-2">
       {zileAfisate.map((zi) => {
         const dateZi = calendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
         const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
 
         return (
-          <div key={zi.key} className={`bg-[#0f172a] rounded-[2.5rem] border-2 transition-all ${esteAzi ? 'border-indigo-500 shadow-2xl' : 'border-slate-800/50'}`}>
-            <div className="p-6 border-b border-slate-800 bg-black/20 rounded-t-[2.5rem]">
-              <h3 className="text-xs font-black uppercase text-indigo-400 tracking-widest">{zi.display}</h3>
+          <div key={zi.key} className={`bg-[#0f172a] rounded-[1.2rem] border-2 transition-all ${esteAzi ? 'border-indigo-500' : 'border-slate-800/40'}`}>
+            <div className="p-2.5 border-b border-slate-800/50 bg-black/20 rounded-t-[1.2rem]">
+              <h3 className="text-[9px] font-black uppercase text-indigo-400">{zi.display}</h3>
             </div>
 
-            {/* GRID ADAPTIV: 1 coloană pe mobil, 2 pe tabletă, 3 pe PC mare */}
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="p-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 md:gap-4">
               {functii.map((f, idx) => {
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
                 const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
-                const info = formatNumeInterfata(omPlanificat);
+                const info = formatareNumeElement(omPlanificat);
                 const filtrati = (reguli[f] || []).length > 0 ? personal.filter(p => reguli[f].includes(p.numeComplet)) : personal;
 
                 return (
-                  <div key={f} className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 ml-2">
-                      {getIcon(f, 16)}
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{f}</label>
+                  <div key={f} className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1.5 ml-1">
+                      {getIcon(f, 11)}
+                      <label className="text-[8px] font-bold text-slate-500 uppercase">{f}</label>
                     </div>
 
-                    <div className="relative group">
-                      {/* UI VIZUAL */}
-                      <div className="w-full bg-[#020617] border border-slate-800 rounded-2xl p-5 flex justify-between items-center min-h-[80px] transition-colors group-hover:border-slate-600">
-                        <div className="text-left overflow-hidden mr-4">
-                          <p className="text-[10px] font-bold text-indigo-400/80 leading-none mb-1.5">{info.grad}</p>
-                          <p className="text-[15px] font-black text-white uppercase tracking-tight truncate">{info.nume}</p>
+                    <div className="relative">
+                      {/* CARD VIZUAL - TEXT MARE ȘI FORMATAT */}
+                      <div className="w-full bg-[#020617] border border-slate-800/60 rounded-lg px-3 py-2 flex justify-between items-center min-h-[55px]">
+                        <div className="text-left overflow-hidden">
+                          <p className="text-[9px] font-medium text-indigo-400/90 leading-none mb-1">{info.grad}</p>
+                          <p className="text-[16px] font-bold text-white tracking-tight truncate">{info.nume}</p>
                         </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="bg-slate-900/50 p-2 rounded-lg">{getIcon(f, 20)}</div>
-                          {editabil && <ChevronDown size={18} className="text-slate-700" />}
-                        </div>
+                        <div className="opacity-30">{getIcon(f, 15)}</div>
                       </div>
 
-                      {/* SELECT NATIV (Invisible Overlay) */}
+                      {/* POP-UP NATIV - TEXTUL DIN LISTĂ ESTE FORMATAT AICI */}
                       {editabil && (
                         <select 
                           value={omPlanificat} 
                           onChange={(e) => handleSchimbare(zi.key, idx, e.target.value)}
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                          style={{ fontSize: '18px' }} // Încercare de mărire font pentru unele browsere
                         >
                           <option value="Din altă subunitate">DIN ALTĂ SUBUNITATE</option>
-                          {filtrati.map(p => (
-                            <option key={p.id} value={p.numeComplet}>{p.numeComplet}</option>
-                          ))}
+                          {filtrati.map(p => {
+                            const opt = formatareNumeElement(p.numeComplet);
+                            return (
+                              <option key={p.id} value={p.numeComplet}>
+                                {opt.complet}
+                              </option>
+                            );
+                          })}
                         </select>
                       )}
                     </div>
