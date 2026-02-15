@@ -38,7 +38,6 @@ function App() {
 
   const vibreaza = (ms = 40) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
-  // Logica pentru etichete: Azi, Mâine, + următoarele 2 zile cu nume
   const optiuniZile = [0, 1, 2, 3].map(i => {
     const data = addDays(new Date(), i);
     let label = "";
@@ -107,9 +106,10 @@ function App() {
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(50);
     const targetZiKey = optiuniZile[ziSelectata].key;
-    const restrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala"].includes(nouStatus);
+    // Adăugat "În serviciu" și "După serviciu" în lista de restricții pentru masă
+    const restrictivMasa = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala", "În serviciu", "După serviciu"].includes(nouStatus);
     const updateObj = { [`status_${targetZiKey}`]: nouStatus };
-    if (restrictiv) updateObj[`cantina_${targetZiKey}`] = false;
+    if (restrictivMasa) updateObj[`cantina_${targetZiKey}`] = false;
     await updateDoc(doc(db, "echipa", id), updateObj);
     setMembruEditat(null);
   };
@@ -223,13 +223,23 @@ function App() {
               <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
                  <h2 className="text-lg font-black uppercase text-orange-500 mb-6 text-center">Masa {optiuniZile[ziSelectata].label} ({nrLaCantina})</h2>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                   {echipa.map(m => (
-                     <button key={m.id} onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} 
-                       className={`flex justify-between items-center p-4 rounded-xl border-2 ${m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
-                       {formatIdentitate(m)}
-                       {m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>}
-                     </button>
-                   ))}
+                   {echipa.map(m => {
+                     // Logica restrictivă și pentru admin în vizualizarea de masă
+                     const currentStatus = m[`status_${ziKey}`] || "Nespecificat";
+                     const isLocked = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala", "În serviciu", "După serviciu"].includes(currentStatus);
+                     return (
+                       <button key={m.id} 
+                         disabled={isLocked}
+                         onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} 
+                         className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all ${isLocked ? 'bg-red-950/20 border-red-900/30 opacity-40 cursor-not-allowed' : m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
+                         <div className="flex flex-col">
+                            {formatIdentitate(m)}
+                            {isLocked && <span className="text-[8px] text-red-400 font-bold uppercase mt-1">{currentStatus}</span>}
+                         </div>
+                         {isLocked ? <Lock size={14} className="text-red-500"/> : m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>}
+                       </button>
+                     );
+                   })}
                  </div>
               </div>
             )}
@@ -274,7 +284,8 @@ function App() {
                   const realTimeSelf = echipa.find(e => e.id === userLogat.id);
                   const status = getStatusMembru(userLogat);
                   const mananca = realTimeSelf ? realTimeSelf[`cantina_${ziKey}`] : false;
-                  const esteRestrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala"].includes(status);
+                  // Adăugat restricția pentru "În serviciu" și "După serviciu"
+                  const esteRestrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala", "În serviciu", "După serviciu"].includes(status);
                   
                   return (
                     <button 
