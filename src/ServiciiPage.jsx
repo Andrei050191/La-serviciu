@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, collection, query, orderBy, setDoc, updateDoc } from 'firebase/firestore';
-import { Shield, User, Users } from 'lucide-react';
+import { 
+  Shield, 
+  User, 
+  Users, 
+  Radio, 
+  Zap, 
+  Eye, 
+  Lock, 
+  UserCheck 
+} from 'lucide-react';
 import { format, addDays, parse } from 'date-fns';
 import { ro } from 'date-fns/locale';
 
@@ -12,6 +21,21 @@ const ServiciiPage = ({ editabil }) => {
   const [loading, setLoading] = useState(true);
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
+
+  // --- FUNCȚIE PENTRU ICONIȚE ---
+  const getIcon = (functie) => {
+    switch (functie) {
+      case "Ajutor OSU": return <Shield size={18} className="text-blue-400" />;
+      case "Sergent de serviciu PCT": return <Lock size={18} className="text-amber-400" />;
+      case "Planton": return <Eye size={18} className="text-emerald-400" />;
+      case "Patrulă": return <Users size={18} className="text-indigo-400" />;
+      case "Operator radio": return <Radio size={18} className="text-purple-400" />;
+      case "Intervenția 1": return <Zap size={18} className="text-red-500" />;
+      case "Intervenția 2": return <Zap size={18} className="text-orange-500" />;
+      case "Responsabil": return <UserCheck size={18} className="text-pink-400" />;
+      default: return <Shield size={18} className="text-slate-400" />;
+    }
+  };
 
   // --- FORMATARE LUNGĂ CU TEXT MARE ---
   const formatTextBrut = (text) => {
@@ -103,7 +127,10 @@ const ServiciiPage = ({ editabil }) => {
 
                 return (
                   <div key={f} className="flex flex-col gap-2">
-                    <label className="text-[10px] font-black text-indigo-400 uppercase ml-2 tracking-widest">{f}</label>
+                    <div className="flex items-center gap-2 ml-2">
+                      {getIcon(f)}
+                      <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{f}</label>
+                    </div>
                     {editabil ? (
                       <select 
                         value={omPlanificat} 
@@ -120,7 +147,7 @@ const ServiciiPage = ({ editabil }) => {
                     ) : (
                       <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-inner">
                         <span className="text-[14px] font-black uppercase text-white">{formatTextBrut(omPlanificat)}</span>
-                        <Shield size={18} className="text-indigo-500/30" />
+                        <div className="opacity-40">{getIcon(f)}</div>
                       </div>
                     )}
                   </div>
