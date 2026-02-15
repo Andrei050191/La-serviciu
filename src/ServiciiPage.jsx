@@ -13,41 +13,32 @@ const ServiciiPage = ({ editabil }) => {
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
 
-  // --- LOGICĂ DE FORMATARE AVANSATĂ PENTRU GRADE DIN RM ---
+  // --- FORMATARE LUNGĂ CU TEXT MARE ---
   const formatTextBrut = (text) => {
     if (!text || text === "Din altă subunitate") return text;
     
     const cifreRomane = ['I', 'II', 'III', 'IV', 'V'];
     const parti = text.split(' ');
-    
     let indexStartNume = 0;
 
-    // Detectăm unde se termină gradul (ex: "Soldat clasa I", "Sergent", "Locotenent")
     for (let i = 0; i < parti.length; i++) {
       const cuv = parti[i].toUpperCase();
-      // Dacă cuvântul este "CLASA" sau o cifră romană, face parte din grad
       if (cuv === "CLASA" || cifreRomane.includes(cuv)) {
         indexStartNume = i + 1;
-      } 
-      // Dacă este un grad simplu (primul cuvânt)
-      else if (i === 0) {
+      } else if (i === 0) {
         indexStartNume = 1;
       } else {
-        break; // Am ajuns la Prenume
+        break;
       }
     }
 
-    // 1. Gradul (mici + cifre romane MARI)
     const gradul = parti.slice(0, indexStartNume).map(p => {
       if (cifreRomane.includes(p.toUpperCase())) return p.toUpperCase();
       return p.toLowerCase();
     }).join(' ');
 
-    // 2. Prenumele (Prima majusculă)
     const prenumeRaw = parti[indexStartNume] || "";
     const prenume = prenumeRaw.charAt(0).toUpperCase() + prenumeRaw.slice(1).toLowerCase();
-
-    // 3. Numele de familie (Restul cuvintelor - TOATE MARI)
     const numeleFamilie = parti.slice(indexStartNume + 1).join(' ').toUpperCase();
 
     return `${gradul} ${prenume} ${numeleFamilie}`.trim();
@@ -72,98 +63,38 @@ const ServiciiPage = ({ editabil }) => {
         ...d.data()
       })));
     });
-
     const unsubCal = onSnapshot(doc(db, "servicii", "calendar"), (snap) => {
       if (snap.exists()) setCalendar(snap.data().data || {});
       setLoading(false);
     });
-
     const unsubReg = onSnapshot(doc(db, "setari", "reguli_servicii"), (snap) => {
       if (snap.exists()) setReguli(snap.data());
     });
-
     return () => { unsubPers(); unsubCal(); unsubReg(); };
   }, []);
 
   const handleSchimbare = async (zi, index, valoare) => {
-    if (navigator.vibrate) navigator.vibrate(40);
-    const nouCalendar = JSON.parse(JSON.stringify(calendar));
-    const vechiulOmNume = calendar[zi.key]?.oameni[index];
-    const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
-    
-    const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
-    const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
-    
-    const oameniIeri = calendar[ieriKey]?.oameni || [];
-    const oameniAzi = calendar[zi.key]?.oameni || [];
-    const oameniMaine = calendar[maineKey]?.oameni || [];
-
-    if (valoare !== "Din altă subunitate") {
-      if (oameniAzi.includes(valoare)) {
-        alert(`⚠️ ${formatTextBrut(valoare)} este deja planificat azi!`);
-        return;
-      }
-      if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
-        alert(`⚠️ ${formatTextBrut(valoare)} este planificat ieri sau mâine!`);
-        return;
-      }
-    }
-
-    const functiaCurenta = functii[index];
-    const esteInterventie = functiaCurenta.includes("Intervenția");
-
-    if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate" && !esteInterventie) {
-      const omV = personal.find(p => p.numeComplet === vechiulOmNume);
-      if (omV) {
-        await updateDoc(doc(db, "echipa", omV.id), { 
-          [`status_${zi.ziFiltru}`]: "Prezent la serviciu",
-          [`status_${zi.ziUrmatoareFiltru}`]: "Prezent la serviciu"
-        });
-      }
-    }
-
-    if (valoare !== "Din altă subunitate" && !esteInterventie) {
-      const omN = personal.find(p => p.numeComplet === valoare);
-      if (omN) {
-        await updateDoc(doc(db, "echipa", omN.id), { 
-          [`status_${zi.ziFiltru}`]: "În serviciu",
-          [`status_${zi.ziUrmatoareFiltru}`]: "După serviciu"
-        });
-      }
-    }
-
+    const nouCalendar = { ...calendar };
     if (!nouCalendar[zi.key]) nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
     nouCalendar[zi.key].oameni[index] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
   };
 
-  if (loading) return <div className="p-10 text-center text-white opacity-50 font-black uppercase">Se încarcă...</div>;
+  if (loading) return <div className="p-10 text-center text-white/50 font-black">SE ÎNCARCĂ...</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       {zileAfisate.map((zi) => {
         const dateZi = calendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
         const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
 
         return (
-          <div key={zi.key} className={`bg-slate-900 rounded-[2rem] border-2 transition-all ${esteAzi ? 'border-green-500 shadow-2xl' : 'border-slate-800'}`}>
-            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-black/20 rounded-t-[2rem]">
-              <h3 className="text-[11px] font-black uppercase text-white tracking-widest">{zi.display}</h3>
-              {editabil && (
-                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-700">
-                  <button onClick={async () => {
-                    const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{}), mod: "1"};
-                    await setDoc(doc(db, "servicii", "calendar"), { data: nC });
-                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "1" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`}><User size={12}/></button>
-                  <button onClick={async () => {
-                    const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{}), mod: "2"};
-                    await setDoc(doc(db, "servicii", "calendar"), { data: nC });
-                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "2" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`}><Users size={12}/></button>
-                </div>
-              )}
+          <div key={zi.key} className={`bg-slate-900 rounded-[2rem] border-2 transition-all ${esteAzi ? 'border-indigo-500 shadow-2xl scale-[1.02]' : 'border-slate-800'}`}>
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-black/30 rounded-t-[2rem]">
+              <h3 className="text-xs font-black uppercase text-white tracking-widest">{zi.display}</h3>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-5">
               {functii.map((f, idx) => {
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
                 const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
@@ -171,15 +102,15 @@ const ServiciiPage = ({ editabil }) => {
                 const filtrati = (listaE.length > 0) ? personal.filter(p => listaE.includes(p.numeComplet)) : personal;
 
                 return (
-                  <div key={f} className="flex flex-col gap-1">
-                    <label className="text-[9px] font-black text-slate-500 uppercase ml-2 tracking-tighter">{f}</label>
+                  <div key={f} className="flex flex-col gap-2">
+                    <label className="text-[10px] font-black text-indigo-400 uppercase ml-2 tracking-widest">{f}</label>
                     {editabil ? (
                       <select 
                         value={omPlanificat} 
                         onChange={(e) => handleSchimbare(zi, idx, e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
+                        className="w-full bg-slate-950 border border-slate-700 p-5 rounded-2xl text-[14px] font-black text-white outline-none appearance-none shadow-xl focus:border-indigo-500"
                       >
-                        <option value="Din altă subunitate">Din altă subunitate</option>
+                        <option value="Din altă subunitate">DIN ALTĂ SUBUNITATE</option>
                         {filtrati.map(p => (
                           <option key={p.id} value={p.numeComplet}>
                             {formatTextBrut(p.numeComplet)}
@@ -187,9 +118,9 @@ const ServiciiPage = ({ editabil }) => {
                         ))}
                       </select>
                     ) : (
-                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
-                        <span className="text-xs font-black uppercase text-white/90">{formatTextBrut(omPlanificat)}</span>
-                        <Shield size={14} className="text-blue-500/20" />
+                      <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-inner">
+                        <span className="text-[14px] font-black uppercase text-white">{formatTextBrut(omPlanificat)}</span>
+                        <Shield size={18} className="text-indigo-500/30" />
                       </div>
                     )}
                   </div>
