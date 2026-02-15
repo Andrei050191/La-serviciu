@@ -13,6 +13,46 @@ const ServiciiPage = ({ editabil }) => {
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
 
+  // --- LOGICĂ DE FORMATARE AVANSATĂ PENTRU GRADE DIN RM ---
+  const formatTextBrut = (text) => {
+    if (!text || text === "Din altă subunitate") return text;
+    
+    const cifreRomane = ['I', 'II', 'III', 'IV', 'V'];
+    const parti = text.split(' ');
+    
+    let indexStartNume = 0;
+
+    // Detectăm unde se termină gradul (ex: "Soldat clasa I", "Sergent", "Locotenent")
+    for (let i = 0; i < parti.length; i++) {
+      const cuv = parti[i].toUpperCase();
+      // Dacă cuvântul este "CLASA" sau o cifră romană, face parte din grad
+      if (cuv === "CLASA" || cifreRomane.includes(cuv)) {
+        indexStartNume = i + 1;
+      } 
+      // Dacă este un grad simplu (primul cuvânt)
+      else if (i === 0) {
+        indexStartNume = 1;
+      } else {
+        break; // Am ajuns la Prenume
+      }
+    }
+
+    // 1. Gradul (mici + cifre romane MARI)
+    const gradul = parti.slice(0, indexStartNume).map(p => {
+      if (cifreRomane.includes(p.toUpperCase())) return p.toUpperCase();
+      return p.toLowerCase();
+    }).join(' ');
+
+    // 2. Prenumele (Prima majusculă)
+    const prenumeRaw = parti[indexStartNume] || "";
+    const prenume = prenumeRaw.charAt(0).toUpperCase() + prenumeRaw.slice(1).toLowerCase();
+
+    // 3. Numele de familie (Restul cuvintelor - TOATE MARI)
+    const numeleFamilie = parti.slice(indexStartNume + 1).join(' ').toUpperCase();
+
+    return `${gradul} ${prenume} ${numeleFamilie}`.trim();
+  };
+
   const zileAfisate = [-1, 0, 1, 2, 3, 4, 5].map(offset => {
     const d = addDays(new Date(), offset);
     return {
@@ -46,6 +86,7 @@ const ServiciiPage = ({ editabil }) => {
   }, []);
 
   const handleSchimbare = async (zi, index, valoare) => {
+    if (navigator.vibrate) navigator.vibrate(40);
     const nouCalendar = JSON.parse(JSON.stringify(calendar));
     const vechiulOmNume = calendar[zi.key]?.oameni[index];
     const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
@@ -57,14 +98,13 @@ const ServiciiPage = ({ editabil }) => {
     const oameniAzi = calendar[zi.key]?.oameni || [];
     const oameniMaine = calendar[maineKey]?.oameni || [];
 
-    // 1. RESTRICȚII (doar dacă nu e "Din altă subunitate")
     if (valoare !== "Din altă subunitate") {
       if (oameniAzi.includes(valoare)) {
-        alert(`⚠️ ${valoare} este deja planificat azi!`);
+        alert(`⚠️ ${formatTextBrut(valoare)} este deja planificat azi!`);
         return;
       }
       if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
-        alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
+        alert(`⚠️ ${formatTextBrut(valoare)} este planificat ieri sau mâine!`);
         return;
       }
     }
@@ -72,9 +112,6 @@ const ServiciiPage = ({ editabil }) => {
     const functiaCurenta = functii[index];
     const esteInterventie = functiaCurenta.includes("Intervenția");
 
-    // 2. ACTUALIZARE STATUS ÎN LISTĂ/SUMAR
-    
-    // Curățăm statusul vechiului om (dacă nu era la intervenție)
     if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate" && !esteInterventie) {
       const omV = personal.find(p => p.numeComplet === vechiulOmNume);
       if (omV) {
@@ -85,7 +122,6 @@ const ServiciiPage = ({ editabil }) => {
       }
     }
 
-    // Setăm statusul noului om (dacă nu e la intervenție)
     if (valoare !== "Din altă subunitate" && !esteInterventie) {
       const omN = personal.find(p => p.numeComplet === valoare);
       if (omN) {
@@ -96,13 +132,12 @@ const ServiciiPage = ({ editabil }) => {
       }
     }
 
-    // 3. SALVARE ÎN CALENDAR
     if (!nouCalendar[zi.key]) nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
     nouCalendar[zi.key].oameni[index] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
   };
 
-  if (loading) return <div className="p-10 text-center text-white opacity-50 font-black">SE ÎNCARCĂ...</div>;
+  if (loading) return <div className="p-10 text-center text-white opacity-50 font-black uppercase">Se încarcă...</div>;
 
   return (
     <div className="space-y-6">
@@ -119,11 +154,11 @@ const ServiciiPage = ({ editabil }) => {
                   <button onClick={async () => {
                     const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{}), mod: "1"};
                     await setDoc(doc(db, "servicii", "calendar"), { data: nC });
-                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "1" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><User size={12}/></button>
+                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "1" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`}><User size={12}/></button>
                   <button onClick={async () => {
                     const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{}), mod: "2"};
                     await setDoc(doc(db, "servicii", "calendar"), { data: nC });
-                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "2" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><Users size={12}/></button>
+                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "2" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`}><Users size={12}/></button>
                 </div>
               )}
             </div>
@@ -146,12 +181,14 @@ const ServiciiPage = ({ editabil }) => {
                       >
                         <option value="Din altă subunitate">Din altă subunitate</option>
                         {filtrati.map(p => (
-                          <option key={p.id} value={p.numeComplet}>{p.numeComplet}</option>
+                          <option key={p.id} value={p.numeComplet}>
+                            {formatTextBrut(p.numeComplet)}
+                          </option>
                         ))}
                       </select>
                     ) : (
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
-                        <span className="text-xs font-black uppercase text-white/90">{omPlanificat}</span>
+                        <span className="text-xs font-black uppercase text-white/90">{formatTextBrut(omPlanificat)}</span>
                         <Shield size={14} className="text-blue-500/20" />
                       </div>
                     )}
