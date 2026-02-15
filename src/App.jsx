@@ -7,7 +7,7 @@ import { format, addDays } from 'date-fns';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, CalendarDays, Utensils, Check, Lock, LogOut, 
-  Shield, X, ExternalLink
+  Shield, X, ExternalLink, AlertTriangle
 } from 'lucide-react';
 
 import ServiciiPage from './ServiciiPage';
@@ -39,6 +39,8 @@ function App() {
     { label: 'Azi', data: new Date(), key: format(new Date(), 'yyyyMMdd') },
     { label: 'Mâine', data: addDays(new Date(), 1), key: format(addDays(new Date(), 1), 'yyyyMMdd') }
   ];
+
+  const ziKey = optiuniZile[ziSelectata].key;
 
   const formatIdentitate = (m) => {
     if (!m) return null;
@@ -97,7 +99,12 @@ function App() {
     const ziCurentaFormatata = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
     const ziIeriFormatata = format(addDays(optiuniZile[ziSelectata].data, -1), 'dd.MM.yyyy');
 
-    await updateDoc(doc(db, "echipa", id), { [`status_${ziKeyFiltru}`]: nouStatus });
+    // Dacă statusul devine unul restrictiv, scoatem automat bifa de cantină
+    const restrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala"].includes(nouStatus);
+    const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
+    if (restrictiv) updateObj[`cantina_${ziKeyFiltru}`] = false;
+
+    await updateDoc(doc(db, "echipa", id), updateObj);
 
     const membru = echipa.find(m => m.id === id);
     const numeComplet = `${membru.grad || ''} ${membru.prenume || ''} ${membru.nume || ''}`.trim().toUpperCase();
@@ -130,13 +137,15 @@ function App() {
   };
 
   const toggleCantina = async (id, stare) => {
-    await updateDoc(doc(db, "echipa", id), { [`cantina_${optiuniZile[ziSelectata].key}`]: !stare });
+    await updateDoc(doc(db, "echipa", id), { [`cantina_${ziKey}`]: !stare });
   };
 
   const getStatusMembru = (m) => {
     const realTimeMembru = echipa.find(e => e.id === m.id);
-    return realTimeMembru ? (realTimeMembru[`status_${optiuniZile[ziSelectata].key}`] || "Nespecificat") : "Nespecificat";
+    return realTimeMembru ? (realTimeMembru[`status_${ziKey}`] || "Nespecificat") : "Nespecificat";
   };
+
+  const nrLaCantina = echipa.filter(m => m[`cantina_${ziKey}`] === true).length;
 
   const categorii = Object.keys(statusConfig).reduce((acc, status) => {
     acc[status] = echipa.filter(m => getStatusMembru(m) === status);
@@ -161,7 +170,6 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-white p-4">
       <div className="max-w-4xl mx-auto">
         
-        {/* HEADER */}
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
@@ -170,7 +178,6 @@ function App() {
           <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl"><LogOut size={24}/></button>
         </div>
 
-        {/* SELECTIE ZI */}
         <div className="flex gap-2 mb-4">
           {optiuniZile.map((zi, index) => (
             <button key={zi.key} onClick={() => setZiSelectata(index)} 
@@ -181,48 +188,29 @@ function App() {
           ))}
         </div>
 
-        {/* INDICATII COMANDANT */}
         <div className="space-y-3 mb-8">
           <div className={`p-5 rounded-[2rem] border-2 transition-all ${mesajNou ? 'border-red-500 bg-red-950/30' : 'border-slate-800 bg-slate-900'}`}>
             <div className="flex justify-between items-center mb-4">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Indicații Comandant</span>
               {userLogat?.rol === 'admin' && (
-                <button 
-                  onClick={async () => {
-                    if (editIndicatii) {
-                      await setDoc(doc(db, "setari", "indicatii"), { text: indicatii });
-                    }
-                    setEditIndicatii(!editIndicatii);
-                  }} 
-                  className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">
-                  {editIndicatii ? 'Gata' : 'Modifică'}
-                </button>
+                <button onClick={async () => { if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
+                  className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">{editIndicatii ? 'Gata' : 'Modifică'}</button>
               )}
             </div>
             {editIndicatii ? (
-              <textarea 
-                className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[120px]"
-                value={indicatii} 
-                onChange={(e) => setIndicatii(e.target.value)}
-                autoFocus
-              />
+              <textarea className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[120px]"
+                value={indicatii} onChange={(e) => setIndicatii(e.target.value)} autoFocus />
             ) : (
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                <p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p>
-              </div>
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p></div>
             )}
           </div>
 
-          {/* LINK SERVICII PENTRU USERI */}
           {userLogat?.rol === 'user' && (
             <button onClick={() => setPaginaCurenta(paginaCurenta === 'servicii_vizualizare' ? 'personal' : 'servicii_vizualizare')} 
               className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div>
-                <div className="text-left">
-                  <p className="font-black text-xs uppercase tracking-widest">Planificare Servicii</p>
-                  <p className="text-[10px] text-slate-400 font-bold">Apasă pentru a vedea sau modifica</p>
-                </div>
+                <div className="text-left"><p className="font-black text-xs uppercase tracking-widest">Planificare Servicii</p><p className="text-[10px] text-slate-400 font-bold">Apasă pentru a vedea sau modifica</p></div>
               </div>
               <ExternalLink size={20} className="text-blue-500 opacity-50" />
             </button>
@@ -254,9 +242,7 @@ function App() {
                       {isEditing && (
                         <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl">
                           {Object.keys(statusConfig).map(st => (
-                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800">
-                              {statusConfig[st].icon} {st}
-                            </button>
+                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800">{statusConfig[st].icon} {st}</button>
                           ))}
                         </div>
                       )}
@@ -269,13 +255,13 @@ function App() {
             {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
             {paginaCurenta === 'cantina' && (
               <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
-                 <h2 className="text-lg font-black uppercase text-orange-500 mb-6 text-center">Masa la cantină</h2>
+                 <h2 className="text-lg font-black uppercase text-orange-500 mb-6 text-center">Masa la cantină ({nrLaCantina})</h2>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                    {echipa.map(m => (
-                     <button key={m.id} onClick={() => toggleCantina(m.id, m[`cantina_${optiuniZile[ziSelectata].key}`])} 
-                       className={`flex justify-between items-center p-4 rounded-xl border-2 ${m[`cantina_${optiuniZile[ziSelectata].key}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
+                     <button key={m.id} onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} 
+                       className={`flex justify-between items-center p-4 rounded-xl border-2 ${m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
                        {formatIdentitate(m)}
-                       {m[`cantina_${optiuniZile[ziSelectata].key}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>}
+                       {m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>}
                      </button>
                    ))}
                  </div>
@@ -322,15 +308,27 @@ function App() {
                 </div>
 
                 <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-                  <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină {optiuniZile[ziSelectata].label}?</h2>
+                  <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină ({nrLaCantina})</h2>
                   {(() => {
-                    const me = echipa.find(e => e.id === userLogat.id);
-                    const mananca = me ? me[`cantina_${optiuniZile[ziSelectata].key}`] : false;
+                    const realTimeSelf = echipa.find(e => e.id === userLogat.id);
+                    const status = getStatusMembru(userLogat);
+                    const mananca = realTimeSelf ? realTimeSelf[`cantina_${ziKey}`] : false;
+                    const esteRestrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala"].includes(status);
+                    
                     return (
-                      <button onClick={() => toggleCantina(userLogat.id, mananca)} 
-                        className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all ${mananca ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800'}`}>
-                        <div className="flex items-center gap-4"><Utensils size={24} /><span className="text-sm uppercase font-black">{mananca ? "LA CANTINĂ" : "ACASĂ"}</span></div>
-                        {mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
+                      <button 
+                        onClick={() => !esteRestrictiv && toggleCantina(userLogat.id, mananca)} 
+                        disabled={esteRestrictiv}
+                        className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all 
+                          ${esteRestrictiv ? 'bg-red-950/20 border-red-900/50 opacity-50 cursor-not-allowed' : 
+                            mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
+                        <div className="flex items-center gap-4">
+                          <Utensils size={24} />
+                          <span className="text-sm uppercase font-black">
+                            {esteRestrictiv ? `Nu poți lua masa că ești în ${status}` : mananca ? "LA CANTINĂ" : "ACASĂ"}
+                          </span>
+                        </div>
+                        {esteRestrictiv ? <AlertTriangle size={24} className="text-red-500" /> : mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
                       </button>
                     );
                   })()}
