@@ -36,14 +36,16 @@ function App() {
 
   const vibreaza = (ms = 40) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
-  // --- LOGICA DEFINITIVĂ PENTRU FORMATĂRE ---
+  // --- LOGICA REPARATĂ PENTRU CIFRE ROMANE ---
   const formatNumeObiect = (m) => {
     if (!m) return { grad: "", prenume: "", nume: "" };
     const cifreRomane = ['I', 'II', 'III', 'IV', 'V'];
     
-    const grad = String(m.grad || "").split(' ').map(p => 
-      cifreRomane.includes(p.toUpperCase()) ? p.toUpperCase() : p.toLowerCase()
-    ).join(' ');
+    const grad = String(m.grad || "").split(' ').map(p => {
+      const curat = p.toUpperCase().trim();
+      // Dacă este cifră romană, rămâne MARE, altfel se face mic
+      return cifreRomane.includes(curat) ? curat : p.toLowerCase();
+    }).join(' ');
 
     const prenume = m.prenume ? (m.prenume.charAt(0).toUpperCase() + m.prenume.slice(1).toLowerCase()) : "";
     const nume = (m.nume || "").toUpperCase();
@@ -55,9 +57,10 @@ function App() {
   const NumeFormatat = ({ membru, clasaGrad = "text-slate-400", clasaText = "text-white" }) => {
     const { grad, prenume, nume } = formatNumeObiect(membru);
     return (
-      <div className={`flex items-center gap-1.5 font-sans ${clasaText}`}>
-        <span className={`lowercase ${clasaGrad}`}>{grad}</span>
-        <span className="capitalize font-medium">{prenume}</span>
+      <div className={`flex items-baseline gap-1.5 font-sans ${clasaText}`}>
+        {/* Am eliminat clasa lowercase de aici pentru a permite cifrelor romane să fie mari */}
+        <span className={`text-[10px] font-medium ${clasaGrad}`}>{grad}</span>
+        <span className="capitalize font-bold">{prenume}</span>
         <span className="uppercase font-black">{nume}</span>
       </div>
     );
@@ -236,7 +239,7 @@ function App() {
               ))}
             </div>
 
-            {/* SUMAR - REPARAT */}
+            {/* SUMAR */}
             {paginaCurenta === 'categorii' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-500">
                 {Object.keys(statusConfig).map(st => {
@@ -255,7 +258,7 @@ function App() {
                         {oameni.map(o => (
                           <div key={o.id} className="bg-slate-900/50 p-3 rounded-xl border border-white/5 flex items-center gap-3">
                             <div className={`w-1.5 h-1.5 rounded-full ${statusConfig[st].color}`}></div>
-                            <NumeFormatat membru={o} clasaText="text-[11px]" />
+                            <NumeFormatat membru={o} />
                           </div>
                         ))}
                       </div>
@@ -265,7 +268,7 @@ function App() {
               </div>
             )}
 
-            {/* MASA ADMIN - REPARAT */}
+            {/* MASA ADMIN */}
             {paginaCurenta === 'cantina' && (
               <div className="space-y-6">
                 <div className="bg-gradient-to-br from-orange-600 to-orange-800 p-8 rounded-[2.5rem] text-center shadow-2xl">
@@ -283,7 +286,7 @@ function App() {
                           onClick={() => poateManca && toggleCantina(m.id, mananca)} 
                           className={`flex justify-between items-center p-4 rounded-2xl border transition-all ${!poateManca ? 'opacity-10 grayscale cursor-not-allowed' : mananca ? 'bg-orange-600/20 border-orange-500 shadow-lg' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
                           <div className="text-left">
-                            <NumeFormatat membru={m} clasaText="text-[11px]" />
+                            <NumeFormatat membru={m} />
                           </div>
                           {poateManca ? (mananca ? <Check size={16} className="text-orange-500"/> : <X size={16} className="text-slate-700"/>) : <AlertTriangle size={14}/>}
                         </button>
@@ -294,14 +297,14 @@ function App() {
               </div>
             )}
 
-            {/* LISTA - REPARAT */}
+            {/* LISTA ADMIN */}
             {paginaCurenta === 'lista' && (
               <div className="space-y-2 grid grid-cols-1 md:grid-cols-2 gap-3">
                 {echipa.map(m => (
                   <div key={m.id} className="flex flex-col">
                     <button onClick={() => setMembruEditat(membruEditat === m.id ? null : m.id)} className={`w-full flex justify-between items-center bg-slate-900 p-5 rounded-2xl border-2 transition-all ${membruEditat === m.id ? 'border-blue-500 bg-slate-800 shadow-xl' : 'border-slate-800'}`}>
                       <div className="text-left">
-                        <NumeFormatat membru={m} clasaText="text-sm" />
+                        <NumeFormatat membru={m} />
                       </div>
                       <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase ${statusConfig[m[`status_${ziKey}`]]?.color || 'bg-slate-700'}`}>
                         {m[`status_${ziKey}`] || '---'}
@@ -321,7 +324,7 @@ function App() {
             {paginaCurenta === 'config' && <ConfigurareEfectiv />}
           </div>
         ) : (
-          /* USER VIEW - REPARAT */
+          /* USER VIEW */
           <div className="space-y-6">
             <button onClick={() => setPaginaCurenta(paginaCurenta === 'ser' ? 'p' : 'ser')} className="w-full bg-slate-900 p-6 rounded-[2rem] border-2 border-slate-800 font-black uppercase text-sm flex justify-between items-center group shadow-xl">
               <div className="flex items-center gap-4 text-blue-400"><Shield size={24}/><span className="text-white">Planificare Servicii Unitate</span></div>
