@@ -118,6 +118,7 @@ function App() {
     vibreaza(50);
     const membru = echipa.find(m => m.id === id);
     const dataF = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
+    const numeC = `${membru.grad} ${membru.prenume} ${membru.nume}`.toUpperCase();
 
     if (nouStatus === "În serviciu" && ziSelectata > 0) {
       const ieriKey = optiuniZile[ziSelectata - 1].key;
@@ -141,23 +142,36 @@ function App() {
 
     await updateDoc(doc(db, "echipa", id), updateObj);
 
-    const numeC = `${membru.grad} ${membru.nume}`.toUpperCase();
     const [regSnap, calSnap] = await Promise.all([
       getDoc(doc(db, "setari", "reguli_servicii")),
       getDoc(doc(db, "servicii", "calendar"))
     ]);
 
-    if (regSnap.exists() && calSnap.exists()) {
+    if (regSnap.exists()) {
       const reguli = regSnap.data();
-      let calendar = calSnap.data().data || {};
+      let calendarFull = calSnap.exists() ? (calSnap.data().data || {}) : {};
       const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
-      let idx = functii.findIndex(f => reguli[f]?.includes(numeC));
-      if (idx !== -1) {
-        if (!calendar[dataF]) calendar[dataF] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
-        if (nouStatus === "În serviciu") calendar[dataF].oameni[idx] = numeC;
-        else if (calendar[dataF].oameni[idx] === numeC) calendar[dataF].oameni[idx] = "Din altă subunitate";
-        await setDoc(doc(db, "servicii", "calendar"), { data: calendar });
+      
+      if (!calendarFull[dataF]) {
+        calendarFull[dataF] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
       }
+
+      if (nouStatus === "În serviciu") {
+        let gasitFunctie = false;
+        for (let i = 0; i < functii.length; i++) {
+          const f = functii[i];
+          if (reguli[f]?.includes(numeC) && !gasitFunctie) {
+            calendarFull[dataF].oameni[i] = numeC;
+            gasitFunctie = true;
+          }
+        }
+      } else {
+        calendarFull[dataF].oameni = calendarFull[dataF].oameni.map(om => 
+          om === numeC ? "Din altă subunitate" : om
+        );
+      }
+      
+      await setDoc(doc(db, "servicii", "calendar"), { data: calendarFull }, { merge: true });
     }
     setMembruEditat(null);
   };
@@ -182,7 +196,7 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-white p-3 lg:p-8 font-sans">
       <div className="max-w-5xl mx-auto">
         
-        {/* Header Utilizator - Mai scund și buton Logout în dreapta */}
+        {/* Header Utilizator */}
         <div className="relative overflow-hidden bg-gradient-to-r from-blue-700 via-blue-800 to-slate-900 p-4 rounded-[1.5rem] mb-4 shadow-2xl border border-blue-500/30">
           <div className="relative z-10 flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -215,7 +229,7 @@ function App() {
           {editIndicatii ? <textarea value={indicatii} onChange={(e) => setIndicatii(e.target.value)} className="w-full bg-slate-950 p-3 rounded-xl text-sm text-white h-20 border border-blue-500 outline-none" /> : <div className="bg-blue-500/5 p-3 rounded-xl border border-blue-500/10"><p className="text-xs font-bold italic text-blue-100 leading-snug">"{indicatii || "Nu sunt indicații noi."}"</p></div>}
         </div>
 
-        {/* Selector Zile - Toate în rând cu scroll orizontal pe mobil */}
+        {/* Selector Zile */}
         <div className="flex overflow-x-auto no-scrollbar gap-2 mb-6 pb-2">
           {optiuniZile.map((zi, index) => (
             <button 
@@ -246,8 +260,8 @@ function App() {
                     <div key={st} className="bg-slate-900 rounded-[1.5rem] border border-slate-800 overflow-hidden shadow-lg">
                       <div className={`p-3 flex justify-between items-center border-b border-slate-800 ${statusConfig[st].color} bg-opacity-10`}>
                         <div className="flex items-center gap-2">
-                           <div className={`${statusConfig[st].color} p-1.5 rounded-lg text-white shadow-md scale-75`}>{statusConfig[st].icon}</div>
-                           <span className="font-black text-[10px] uppercase tracking-widest">{st}</span>
+                            <div className={`${statusConfig[st].color} p-1.5 rounded-lg text-white shadow-md scale-75`}>{statusConfig[st].icon}</div>
+                            <span className="font-black text-[10px] uppercase tracking-widest">{st}</span>
                         </div>
                         <span className="bg-slate-950 px-2 py-0.5 rounded-full text-[10px] font-black border border-slate-800">{oameni.length}</span>
                       </div>
