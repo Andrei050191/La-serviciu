@@ -101,11 +101,9 @@ function App() {
     const membru = echipa.find(m => m.id === id);
     const statusCurent = membru[`status_${ziKeyFiltru}`];
 
-    // BLOCARE: Nu poți modifica dacă statusul este deja automatizat
+    // Blocare la schimbare daca statusul este special
     if (statusCurent === "În serviciu" || statusCurent === "După serviciu") {
-      alert("⚠️ Statusurile automate (În serviciu / După serviciu) pot fi modificate doar din Planificarea Serviciilor!");
-      setMembruEditat(null);
-      return;
+      return; 
     }
 
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
@@ -151,7 +149,6 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-white p-4">
       <div className="max-w-4xl mx-auto">
         
-        {/* Header */}
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
@@ -160,7 +157,6 @@ function App() {
           <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl"><LogOut size={24}/></button>
         </div>
 
-        {/* Date Selector */}
         <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
           {optiuniZile.map((zi, index) => (
             <button key={zi.key} onClick={() => setZiSelectata(index)} 
@@ -171,7 +167,6 @@ function App() {
           ))}
         </div>
 
-        {/* Indicatii */}
         <div className="space-y-3 mb-8">
           <div className={`p-5 rounded-[2rem] border-2 transition-all ${mesajNou ? 'border-red-500 bg-red-950/30' : 'border-slate-800 bg-slate-900'}`}>
             <div className="flex justify-between items-center mb-4">
@@ -188,9 +183,22 @@ function App() {
                 value={indicatii} onChange={(e) => setIndicatii(e.target.value)} autoFocus />
             )}
           </div>
+
+          {userLogat?.rol === 'user' && (
+            <button onClick={() => setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii')} 
+              className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl">
+              <div className="flex items-center gap-4">
+                <div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div>
+                <div className="text-left"><p className="font-black text-xs uppercase tracking-widest">Planificare Servicii</p></div>
+              </div>
+              <ExternalLink size={20} className="text-blue-500 opacity-50" />
+            </button>
+          )}
         </div>
 
-        {userLogat?.rol === 'admin' ? (
+        {paginaCurenta === 'servicii' ? (
+           <ServiciiPage editabil={true} />
+        ) : userLogat?.rol === 'admin' ? (
           <div className="space-y-6">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
               {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
@@ -206,16 +214,13 @@ function App() {
                   const status = getStatusMembru(m);
                   const isEditing = membruEditat === m.id;
                   const esteBlocat = status === "În serviciu" || status === "După serviciu";
-
                   return (
                     <div key={m.id} className="flex flex-col gap-1">
-                      <button 
-                        disabled={esteBlocat}
-                        onClick={() => setMembruEditat(isEditing ? null : m.id)}
+                      <button disabled={esteBlocat} onClick={() => setMembruEditat(isEditing ? null : m.id)}
                         className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'} ${esteBlocat ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         {formatIdentitate(m)}
                         <div className="flex items-center gap-2">
-                           {esteBlocat && <Lock size={12} className="text-slate-500"/>}
+                           {esteBlocat && <Lock size={12} className="text-slate-400" />}
                            <span className={`text-[9px] font-black px-3 py-2 rounded-lg text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>{status}</span>
                         </div>
                       </button>
@@ -231,7 +236,7 @@ function App() {
                 })}
               </div>
             )}
-            {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
+            
             {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
             
             {paginaCurenta === 'cantina' && (
@@ -248,7 +253,6 @@ function App() {
                              m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800'}`}>
                          <div className="text-left">
                             {formatIdentitate(m)}
-                            {!estePrezent && <span className="text-[8px] font-bold text-red-500 uppercase">{status}</span>}
                          </div>
                          {estePrezent && (m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>)}
                        </button>
@@ -281,22 +285,17 @@ function App() {
                   const statusCurent = getStatusMembru(userLogat);
                   const activ = statusCurent === st;
                   const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu";
-
                   return (
-                    <button 
-                      key={st} 
-                      disabled={esteBlocat}
-                      onClick={() => schimbaStatus(userLogat.id, st)} 
+                    <button key={st} disabled={esteBlocat} onClick={() => schimbaStatus(userLogat.id, st)} 
                       className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
                         ${activ ? 'bg-white text-black border-white shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
-                        ${esteBlocat ? 'opacity-30 cursor-not-allowed grayscale' : ''}`}>
+                        ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
                       <div className={`p-2 rounded-lg ${activ ? 'bg-black text-white' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
                       <div className="flex flex-col text-left">
                         <span className="text-sm uppercase font-black">{st}</span>
-                        {esteBlocat && activ && <span className="text-[9px] font-bold text-red-600 uppercase">Blocat prin ordin</span>}
+                        {esteBlocat && activ && <span className="text-[9px] font-bold text-red-600 uppercase">Blocat din serviciu</span>}
                       </div>
-                      {activ && <Check size={24} className="ml-auto" strokeWidth={4} />}
-                      {esteBlocat && activ && <Lock size={18} className="ml-auto opacity-40"/>}
+                      {activ && (esteBlocat ? <Lock size={20} className="ml-auto" /> : <Check size={24} className="ml-auto" strokeWidth={4} />)}
                     </button>
                   );
                 })}
@@ -317,9 +316,9 @@ function App() {
                         mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
                     <div className="flex items-center gap-4">
                       <Utensils size={24} />
-                      <span className="text-sm uppercase font-black">{!estePrezent ? `Status: ${status}` : mananca ? "LA CANTINĂ" : "ACASĂ"}</span>
+                      <span className="text-sm uppercase font-black">{mananca ? "LA CANTINĂ" : "ACASĂ"}</span>
                     </div>
-                    {!estePrezent ? <Lock size={24} className="text-red-500" /> : mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
+                    {mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
                   </button>
                 );
               })()}

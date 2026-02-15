@@ -144,7 +144,7 @@ const ServiciiPage = ({ editabil }) => {
                         onChange={(e) => handleSchimbare(zi, idx, e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
                       >
-                        <option value="Din altă subunitate">ALEGE PERSOANA</option>
+                        <option value="Din altă subunitate">Din altă subunitate</option>
                         {filtrati.map(p => (
                           <option key={p.id} value={p.numeComplet}>{p.numeComplet}</option>
                         ))}
