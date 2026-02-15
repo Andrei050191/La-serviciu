@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, getDoc 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, List, LayoutDashboard, CalendarDays, 
-  Utensils, Check, Lock, LogOut, AlertCircle, ChevronDown, ChevronUp, Shield, Send, Settings
+  Utensils, Check, Lock, LogOut, AlertCircle, ChevronDown, ChevronUp, Shield, Send, Settings, User, Users
 } from 'lucide-react';
 
 import ServiciiPage from './ServiciiPage';
@@ -115,8 +115,61 @@ function App() {
 
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(70);
-    const ziKey = optiuniZile[ziSelectata].key;
-    await updateDoc(doc(db, "echipa", id), { [`status_${ziKey}`]: nouStatus });
+    const ziKeyData = optiuniZile[ziSelectata].data;
+    const ziKeyFiltru = optiuniZile[ziSelectata].key;
+    
+    // Referințe pentru sincronizare servicii
+    const ziCurentaFormatata = format(ziKeyData, 'dd.MM.yyyy');
+    const ziIeriFormatata = format(addDays(ziKeyData, -1), 'dd.MM.yyyy');
+    const ziUrmatoareFiltru = format(addDays(ziKeyData, 1), 'yyyyMMdd');
+
+    // 1. Update status în profilul omului pentru ziua selectată
+    await updateDoc(doc(db, "echipa", id), { [`status_${ziKeyFiltru}`]: nouStatus });
+
+    const membru = echipa.find(m => m.id === id);
+    const numeComplet = `${membru.grad || ''} ${membru.prenume || ''} ${membru.nume || ''}`.trim().toUpperCase();
+    const functiiOrdonate = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
+
+    // 2. LOGICA SINCRONIZARE
+    if (nouStatus === "În serviciu" || nouStatus === "După serviciu") {
+      const [reguliSnap, calendarSnap] = await Promise.all([
+        getDoc(doc(db, "setari", "reguli_servicii")),
+        getDoc(doc(db, "servicii", "calendar"))
+      ]);
+
+      const reguli = reguliSnap.exists() ? reguliSnap.data() : {};
+      let calendarData = calendarSnap.exists() ? calendarSnap.data().data : {};
+
+      // Găsim funcția pentru care e eligibil
+      let indexFunctie = -1;
+      for (let i = 0; i < functiiOrdonate.length; i++) {
+        if (reguli[functiiOrdonate[i]]?.includes(numeComplet)) {
+          indexFunctie = i;
+          break;
+        }
+      }
+
+      if (indexFunctie !== -1) {
+        // Dacă e "În serviciu" -> Îl punem în calendarul de AZI
+        if (nouStatus === "În serviciu") {
+          if (!calendarData[ziCurentaFormatata]) calendarData[ziCurentaFormatata] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
+          calendarData[ziCurentaFormatata].oameni[indexFunctie] = numeComplet;
+          
+          // Automat setăm "După serviciu" pentru mâine în listă (dacă nu e intervenție)
+          if (!functiiOrdonate[indexFunctie].includes("Intervenția")) {
+            await updateDoc(doc(db, "echipa", id), { [`status_${ziUrmatoareFiltru}`]: "După serviciu" });
+          }
+        } 
+        // Dacă e "După serviciu" -> Îl punem în calendarul de IERI (căci de acolo vine)
+        else if (nouStatus === "După serviciu") {
+          if (!calendarData[ziIeriFormatata]) calendarData[ziIeriFormatata] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
+          calendarData[ziIeriFormatata].oameni[indexFunctie] = numeComplet;
+        }
+
+        await setDoc(doc(db, "servicii", "calendar"), { data: calendarData });
+      }
+    }
+
     setMembruEditat(null);
   };
 
