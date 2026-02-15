@@ -117,9 +117,12 @@ function App() {
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(50);
     const membru = echipa.find(m => m.id === id);
+    if (!membru) return;
+
     const dataF = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
     const numeC = `${membru.grad} ${membru.prenume} ${membru.nume}`.toUpperCase();
 
+    // Validare: Nu se pot face servicii consecutive
     if (nouStatus === "În serviciu" && ziSelectata > 0) {
       const ieriKey = optiuniZile[ziSelectata - 1].key;
       if (membru[`status_${ieriKey}`] === "În serviciu") {
@@ -128,20 +131,25 @@ function App() {
       }
     }
 
+    // Update obiect pentru ziua curentă
     const updateObj = { [`status_${ziKey}`]: nouStatus, status: nouStatus };
 
+    // LOGICA AUTOMATĂ: Dacă pui "În serviciu", mâine devine "După serviciu" + Cantină OFF
     if (nouStatus === "În serviciu" && ziSelectata < 3) {
       const maineKey = optiuniZile[ziSelectata + 1].key;
       updateObj[`status_${maineKey}`] = "După serviciu";
       updateObj[`cantina_${maineKey}`] = false;
     }
 
+    // Dacă statusul nu permite masa, oprim cantina pentru ziua selectată
     if (["Zi liberă", "Concediu", "Deplasare", "Foaie de boala", "După serviciu"].includes(nouStatus)) {
       updateObj[`cantina_${ziKey}`] = false;
     }
 
+    // Salvare profil
     await updateDoc(doc(db, "echipa", id), updateObj);
 
+    // ACTUALIZARE CALENDAR SERVICII
     const [regSnap, calSnap] = await Promise.all([
       getDoc(doc(db, "setari", "reguli_servicii")),
       getDoc(doc(db, "servicii", "calendar"))
@@ -289,16 +297,16 @@ function App() {
                 <div className="bg-slate-900 rounded-[2rem] border border-slate-800 p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {echipa.map(m => {
-                       const mananca = m[`cantina_${ziKey}`];
-                       const poateManca = m[`status_${ziKey}`] === "Prezent la serviciu";
-                       return (
-                        <button key={m.id} 
-                          onClick={() => poateManca && toggleCantina(m.id, mananca)} 
-                          className={`flex justify-between items-center p-3 rounded-xl border transition-all ${!poateManca ? 'opacity-10 grayscale cursor-not-allowed' : mananca ? 'bg-orange-600/20 border-orange-500 shadow-sm' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
-                          <div className="text-left"><NumeFormatat membru={m} /></div>
-                          {poateManca ? (mananca ? <Check size={14} className="text-orange-500"/> : <X size={14} className="text-slate-700"/>) : <AlertTriangle size={12}/>}
-                        </button>
-                       )
+                        const mananca = m[`cantina_${ziKey}`];
+                        const poateManca = m[`status_${ziKey}`] === "Prezent la serviciu";
+                        return (
+                         <button key={m.id} 
+                           onClick={() => poateManca && toggleCantina(m.id, mananca)} 
+                           className={`flex justify-between items-center p-3 rounded-xl border transition-all ${!poateManca ? 'opacity-10 grayscale cursor-not-allowed' : mananca ? 'bg-orange-600/20 border-orange-500 shadow-sm' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
+                           <div className="text-left"><NumeFormatat membru={m} /></div>
+                           {poateManca ? (mananca ? <Check size={14} className="text-orange-500"/> : <X size={14} className="text-slate-700"/>) : <AlertTriangle size={12}/>}
+                         </button>
+                        )
                     })}
                   </div>
                 </div>
