@@ -8,7 +8,7 @@ import { ro } from 'date-fns/locale';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, CalendarDays, Utensils, Check, Lock, LogOut, 
-  Shield, X, ExternalLink, AlertTriangle
+  Shield, X, ExternalLink, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 import ServiciiPage from './ServiciiPage';
@@ -35,8 +35,12 @@ function App() {
   const [indicatii, setIndicatii] = useState("");
   const [editIndicatii, setEditIndicatii] = useState(false);
   const [mesajNou, setMesajNou] = useState(false);
+  
+  // State pentru submeniul de concediu
+  const [showConcediuSelect, setShowConcediuSelect] = useState(false);
+  const [numarZileConcediu, setNumarZileConcediu] = useState(1);
 
-  const optiuniZile = useMemo(() => [0, 1, 2, 3].map(i => {
+  const optiuniZile = useMemo(() => [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
     const d = addDays(new Date(), i);
     let label = i === 0 ? "Azi" : i === 1 ? "Mâine" : format(d, 'eeee', { locale: ro });
     return { label, data: d, key: format(d, 'yyyyMMdd') };
@@ -101,10 +105,7 @@ function App() {
     const membru = echipa.find(m => m.id === id);
     const statusCurent = membru[`status_${ziKeyFiltru}`];
 
-    // Blocare la schimbare daca statusul este special
-    if (statusCurent === "În serviciu" || statusCurent === "După serviciu") {
-      return; 
-    }
+    if (statusCurent === "În serviciu" || statusCurent === "După serviciu") return;
 
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
     if (nouStatus !== "Prezent la serviciu") {
@@ -113,6 +114,19 @@ function App() {
 
     await updateDoc(doc(db, "echipa", id), updateObj);
     setMembruEditat(null);
+  };
+
+  // Funcție specială pentru salvarea concediului pe mai multe zile
+  const aplicaConcediuLung = async () => {
+    const updates = {};
+    for (let i = 0; i < numarZileConcediu; i++) {
+      const dataViitoare = addDays(new Date(), i);
+      const key = format(dataViitoare, 'yyyyMMdd');
+      updates[`status_${key}`] = "Concediu";
+      updates[`cantina_${key}`] = false;
+    }
+    await updateDoc(doc(db, "echipa", userLogat.id), updates);
+    setShowConcediuSelect(false);
   };
 
   const toggleCantina = async (id, stare) => {
@@ -149,6 +163,7 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-white p-4">
       <div className="max-w-4xl mx-auto">
         
+        {/* Header */}
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
@@ -157,6 +172,7 @@ function App() {
           <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl"><LogOut size={24}/></button>
         </div>
 
+        {/* Selector Zile */}
         <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
           {optiuniZile.map((zi, index) => (
             <button key={zi.key} onClick={() => setZiSelectata(index)} 
@@ -167,6 +183,7 @@ function App() {
           ))}
         </div>
 
+        {/* Indicații și Servicii */}
         <div className="space-y-3 mb-8">
           <div className={`p-5 rounded-[2rem] border-2 transition-all ${mesajNou ? 'border-red-500 bg-red-950/30' : 'border-slate-800 bg-slate-900'}`}>
             <div className="flex justify-between items-center mb-4">
@@ -196,10 +213,12 @@ function App() {
           )}
         </div>
 
+        {/* Zona de conținut principal */}
         {paginaCurenta === 'servicii' ? (
            <ServiciiPage editabil={true} />
         ) : userLogat?.rol === 'admin' ? (
           <div className="space-y-6">
+            {/* Navigare Admin */}
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
               {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
                 <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
@@ -208,6 +227,7 @@ function App() {
               ))}
             </div>
 
+            {/* Listă Toți Membrii (Admin) */}
             {paginaCurenta === 'lista' && (
               <div className="grid grid-cols-1 gap-3">
                 {echipa.map(m => {
@@ -277,6 +297,7 @@ function App() {
             )}
           </div>
         ) : (
+          /* PAGINA UTILIZATOR (PERSONAL) */
           <div className="space-y-6">
             <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
               <h2 className="text-center text-xs font-black uppercase text-blue-400 mb-6 tracking-widest">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
@@ -285,6 +306,42 @@ function App() {
                   const statusCurent = getStatusMembru(userLogat);
                   const activ = statusCurent === st;
                   const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu";
+                  
+                  // LOGICA SPECIALA PENTRU CONCEDIU
+                  if (st === "Concediu") {
+                    return (
+                      <div key={st} className="flex flex-col gap-2">
+                        <button disabled={esteBlocat} onClick={() => setShowConcediuSelect(!showConcediuSelect)} 
+                          className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
+                            ${activ ? 'bg-purple-600 text-white border-purple-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
+                            ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
+                          <div className={`p-2 rounded-lg ${activ ? 'bg-white text-purple-600' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
+                          <span className="text-sm uppercase font-black text-left">{st}</span>
+                          <div className="ml-auto flex items-center gap-2">
+                            {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
+                            {esteBlocat && <Lock size={20} />}
+                            {!esteBlocat && (showConcediuSelect ? <ChevronUp size={20}/> : <ChevronDown size={20}/>)}
+                          </div>
+                        </button>
+                        
+                        {/* SUBMENIU ZILE CONCEDIU */}
+                        {showConcediuSelect && !esteBlocat && (
+                          <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem] animate-in fade-in slide-in-from-top-4 duration-300">
+                             <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4 tracking-tighter">Alege numărul de zile</p>
+                             <div className="flex items-center justify-between mb-6">
+                               <button onClick={() => setNumarZileConcediu(Math.max(1, numarZileConcediu - 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black text-xl">-</button>
+                               <span className="text-4xl font-black">{numarZileConcediu}</span>
+                               <button onClick={() => setNumarZileConcediu(Math.min(45, numarZileConcediu + 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black text-xl">+</button>
+                             </div>
+                             <input type="range" min="1" max="45" value={numarZileConcediu} onChange={(e) => setNumarZileConcediu(parseInt(e.target.value))} 
+                               className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500 mb-6" />
+                             <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm shadow-xl shadow-purple-900/20">Aplică Concediul</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
                   return (
                     <button key={st} disabled={esteBlocat} onClick={() => schimbaStatus(userLogat.id, st)} 
                       className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
@@ -302,6 +359,7 @@ function App() {
               </div>
             </div>
 
+            {/* Cantina */}
             <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
               <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină ({nrLaCantina})</h2>
               {(() => {
