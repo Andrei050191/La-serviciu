@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, List, LayoutDashboard, CalendarDays, 
-  Utensils, Check, Lock, LogOut, AlertCircle, ChevronDown, ChevronUp, Shield
+  Utensils, Check, Lock, LogOut, AlertCircle, ChevronDown, ChevronUp, Shield, Send
 } from 'lucide-react';
 
 import ServiciiPage from './ServiciiPage';
@@ -31,7 +31,11 @@ function App() {
   const [eroareLogin, setEroareLogin] = useState(false);
   const [membruEditat, setMembruEditat] = useState(null);
 
-  // FUNCȚIE PENTRU VIBRARE (Haptic Feedback)
+  // STATE-URI PENTRU INDICATII
+  const [indicatii, setIndicatii] = useState("");
+  const [editIndicatii, setEditIndicatii] = useState(false);
+  const [mesajNou, setMesajNou] = useState(false);
+
   const vibreaza = (ms = 50) => {
     if (navigator.vibrate) {
       navigator.vibrate(ms);
@@ -85,6 +89,20 @@ function App() {
     return () => unsubscribe();
   }, [userLogat?.id]);
 
+  // ASCULTARE INDICATII IN TIMP REAL
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "setari", "indicatii"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setIndicatii(data.text);
+        // Alertă vizuală la schimbare text
+        setMesajNou(true);
+        setTimeout(() => setMesajNou(false), 8000); 
+      }
+    });
+    return () => unsub();
+  }, []);
+
   const login = (cod) => {
     vibreaza(60);
     setEroareLogin(false);
@@ -102,7 +120,7 @@ function App() {
       localStorage.setItem('userEfectiv', JSON.stringify(userNormal));
       setPaginaCurenta('personal');
     } else {
-      vibreaza([50, 50, 50]); // Vibrare dublă pentru eroare
+      vibreaza([50, 50, 50]);
       setEroareLogin(true);
       setInputCod("");
     }
@@ -117,7 +135,7 @@ function App() {
   };
 
   const schimbaStatus = async (id, nouStatus) => {
-    vibreaza(70); // Feedback la schimbare status
+    vibreaza(70);
     const userRef = doc(db, "echipa", id);
     const ziKey = optiuniZile[ziSelectata].key;
     await updateDoc(userRef, { [`status_${ziKey}`]: nouStatus });
@@ -125,10 +143,19 @@ function App() {
   };
 
   const toggleCantina = async (id, stareActuala) => {
-    vibreaza(100); // Vibrație mai lungă pentru bifare masă
+    vibreaza(100);
     const userRef = doc(db, "echipa", id);
     const ziKey = optiuniZile[ziSelectata].key;
     await updateDoc(userRef, { [`cantina_${ziKey}`]: !stareActuala });
+  };
+
+  const salveazaIndicatii = async () => {
+    vibreaza(120);
+    await setDoc(doc(db, "setari", "indicatii"), { 
+      text: indicatii,
+      ultimaActualizare: new Date().toISOString()
+    });
+    setEditIndicatii(false);
   };
 
   const getStatusMembru = (membru) => {
@@ -186,7 +213,7 @@ function App() {
         </div>
 
         {/* NAVIGARE ZILE */}
-        <div className="flex gap-2 mb-8">
+        <div className="flex gap-2 mb-4">
           {optiuniZile.map((zi, index) => (
             <button key={zi.key} onClick={() => { vibreaza(30); setZiSelectata(index); }} 
               className={`flex-1 py-4 rounded-2xl border-2 transition-all ${ziSelectata === index ? 'bg-blue-700 border-blue-400 shadow-lg scale-[1.02]' : 'bg-slate-900 border-slate-800 opacity-60'}`}>
@@ -196,10 +223,53 @@ function App() {
           ))}
         </div>
 
+        {/* FEREASTRA INDICATII COMANDANT */}
+        <div className={`mb-8 p-5 rounded-[2rem] border-2 transition-all duration-500 ${
+          mesajNou ? 'border-red-500 bg-red-950/30 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.2)]' : 'border-slate-800 bg-slate-900 shadow-xl'
+        }`}>
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${mesajNou ? 'bg-red-500 animate-ping' : 'bg-blue-500'}`}></div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Indicații Comandant</span>
+            </div>
+            {userLogat?.rol === 'admin' && (
+              <button 
+                onClick={() => { vibreaza(20); setEditIndicatii(!editIndicatii); }}
+                className={`text-[9px] font-black uppercase px-4 py-1.5 rounded-full transition-all ${editIndicatii ? 'bg-slate-800 text-white' : 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'}`}
+              >
+                {editIndicatii ? 'Anulează' : 'Modifică'}
+              </button>
+            )}
+          </div>
+
+          {editIndicatii ? (
+            <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+              <textarea 
+                className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[100px] transition-all"
+                value={indicatii}
+                onChange={(e) => setIndicatii(e.target.value)}
+                placeholder="Scrie aici ordinele pentru unitate..."
+              />
+              <button 
+                onClick={salveazaIndicatii}
+                className="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20 active:scale-95 transition-all"
+              >
+                <Send size={16} /> Trimite la tot efectivul
+              </button>
+            </div>
+          ) : (
+            <div className="bg-black/40 p-4 rounded-2xl border border-white/5 min-h-[60px] flex items-center">
+              <p className="text-sm font-bold text-white leading-relaxed italic w-full">
+                {indicatii || "Nu sunt indicații noi pentru moment."}
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* --- INTERFAȚA ADMINISTRATOR --- */}
         {userLogat?.rol === 'admin' && (
           <div className="space-y-6">
-            <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
+            <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1 shadow-inner">
               <button onClick={() => { vibreaza(20); setPaginaCurenta('lista'); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] whitespace-nowrap transition-all ${paginaCurenta === 'lista' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`}>LISTĂ</button>
               <button onClick={() => { vibreaza(20); setPaginaCurenta('servicii'); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] whitespace-nowrap transition-all ${paginaCurenta === 'servicii' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500'}`}>SERVICIU</button>
               <button onClick={() => { vibreaza(20); setPaginaCurenta('cantina'); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] whitespace-nowrap transition-all ${paginaCurenta === 'cantina' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500'}`}>MASĂ</button>
@@ -222,7 +292,7 @@ function App() {
                         </div>
                       </button>
                       {isEditing && (
-                        <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl animate-in slide-in-from-top-2">
+                        <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl animate-in slide-in-from-top-2 shadow-inner">
                           {Object.keys(statusConfig).map(st => (
                             <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800 italic hover:bg-slate-800 transition-all">
                               {statusConfig[st].icon} {st}
