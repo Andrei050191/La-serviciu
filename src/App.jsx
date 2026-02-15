@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
   collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, getDoc 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
+import { ro } from 'date-fns/locale';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, CalendarDays, Utensils, Check, Lock, LogOut, 
@@ -35,10 +36,11 @@ function App() {
   const [editIndicatii, setEditIndicatii] = useState(false);
   const [mesajNou, setMesajNou] = useState(false);
 
-  const optiuniZile = [
-    { label: 'Azi', data: new Date(), key: format(new Date(), 'yyyyMMdd') },
-    { label: 'Mâine', data: addDays(new Date(), 1), key: format(addDays(new Date(), 1), 'yyyyMMdd') }
-  ];
+  const optiuniZile = useMemo(() => [0, 1, 2, 3].map(i => {
+    const d = addDays(new Date(), i);
+    let label = i === 0 ? "Azi" : i === 1 ? "Mâine" : format(d, 'eeee', { locale: ro });
+    return { label, data: d, key: format(d, 'yyyyMMdd') };
+  }), []);
 
   const ziKey = optiuniZile[ziSelectata].key;
 
@@ -96,43 +98,22 @@ function App() {
 
   const schimbaStatus = async (id, nouStatus) => {
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
-    const ziCurentaFormatata = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
-    const ziIeriFormatata = format(addDays(optiuniZile[ziSelectata].data, -1), 'dd.MM.yyyy');
+    const membru = echipa.find(m => m.id === id);
+    const statusCurent = membru[`status_${ziKeyFiltru}`];
 
-    // Dacă statusul devine unul restrictiv, scoatem automat bifa de cantină
-    const restrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala"].includes(nouStatus);
+    // BLOCARE: Nu poți modifica dacă statusul este deja automatizat
+    if (statusCurent === "În serviciu" || statusCurent === "După serviciu") {
+      alert("⚠️ Statusurile automate (În serviciu / După serviciu) pot fi modificate doar din Planificarea Serviciilor!");
+      setMembruEditat(null);
+      return;
+    }
+
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
-    if (restrictiv) updateObj[`cantina_${ziKeyFiltru}`] = false;
+    if (nouStatus !== "Prezent la serviciu") {
+      updateObj[`cantina_${ziKeyFiltru}`] = false;
+    }
 
     await updateDoc(doc(db, "echipa", id), updateObj);
-
-    const membru = echipa.find(m => m.id === id);
-    const numeComplet = `${membru.grad || ''} ${membru.prenume || ''} ${membru.nume || ''}`.trim().toUpperCase();
-
-    const [regSnap, calSnap] = await Promise.all([
-      getDoc(doc(db, "setari", "reguli_servicii")),
-      getDoc(doc(db, "servicii", "calendar"))
-    ]);
-
-    const reguli = regSnap.exists() ? regSnap.data() : {};
-    let calendarData = calSnap.exists() ? calSnap.data().data : {};
-    const functiiOrdonate = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
-    let indexFunctie = functiiOrdonate.findIndex(f => reguli[f]?.includes(numeComplet));
-
-    if (indexFunctie !== -1) {
-      if (nouStatus === "În serviciu") {
-        if (!calendarData[ziCurentaFormatata]) calendarData[ziCurentaFormatata] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
-        calendarData[ziCurentaFormatata].oameni[indexFunctie] = numeComplet;
-      } else if (nouStatus === "După serviciu") {
-        if (!calendarData[ziIeriFormatata]) calendarData[ziIeriFormatata] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
-        calendarData[ziIeriFormatata].oameni[indexFunctie] = numeComplet;
-      } else {
-        if (calendarData[ziCurentaFormatata] && calendarData[ziCurentaFormatata].oameni[indexFunctie] === numeComplet) {
-          calendarData[ziCurentaFormatata].oameni[indexFunctie] = "Din altă subunitate";
-        }
-      }
-      await setDoc(doc(db, "servicii", "calendar"), { data: calendarData });
-    }
     setMembruEditat(null);
   };
 
@@ -170,6 +151,7 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-white p-4">
       <div className="max-w-4xl mx-auto">
         
+        {/* Header */}
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
@@ -178,16 +160,18 @@ function App() {
           <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl"><LogOut size={24}/></button>
         </div>
 
-        <div className="flex gap-2 mb-4">
+        {/* Date Selector */}
+        <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
           {optiuniZile.map((zi, index) => (
             <button key={zi.key} onClick={() => setZiSelectata(index)} 
-              className={`flex-1 py-4 rounded-2xl border-2 transition-all ${ziSelectata === index ? 'bg-blue-700 border-blue-400' : 'bg-slate-900 border-slate-800 opacity-60'}`}>
+              className={`flex-1 min-w-[100px] py-4 rounded-2xl border-2 transition-all ${ziSelectata === index ? 'bg-blue-700 border-blue-400' : 'bg-slate-900 border-slate-800 opacity-60'}`}>
               <p className="text-[10px] font-black uppercase opacity-60 mb-1">{zi.label}</p>
               <p className="text-sm font-black text-white">{format(zi.data, 'dd MMM')}</p>
             </button>
           ))}
         </div>
 
+        {/* Indicatii */}
         <div className="space-y-3 mb-8">
           <div className={`p-5 rounded-[2rem] border-2 transition-all ${mesajNou ? 'border-red-500 bg-red-950/30' : 'border-slate-800 bg-slate-900'}`}>
             <div className="flex justify-between items-center mb-4">
@@ -197,31 +181,20 @@ function App() {
                   className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">{editIndicatii ? 'Gata' : 'Modifică'}</button>
               )}
             </div>
-            {editIndicatii ? (
+            {!editIndicatii ? (
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p></div>
+            ) : (
               <textarea className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[120px]"
                 value={indicatii} onChange={(e) => setIndicatii(e.target.value)} autoFocus />
-            ) : (
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p></div>
             )}
           </div>
-
-          {userLogat?.rol === 'user' && (
-            <button onClick={() => setPaginaCurenta(paginaCurenta === 'servicii_vizualizare' ? 'personal' : 'servicii_vizualizare')} 
-              className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl">
-              <div className="flex items-center gap-4">
-                <div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div>
-                <div className="text-left"><p className="font-black text-xs uppercase tracking-widest">Planificare Servicii</p><p className="text-[10px] text-slate-400 font-bold">Apasă pentru a vedea sau modifica</p></div>
-              </div>
-              <ExternalLink size={20} className="text-blue-500 opacity-50" />
-            </button>
-          )}
         </div>
 
         {userLogat?.rol === 'admin' ? (
           <div className="space-y-6">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
               {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
-                <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+                <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
                   {p.replace('config_', '').replace('categorii', 'sumar').replace('cantina', 'masă')}
                 </button>
               ))}
@@ -232,12 +205,19 @@ function App() {
                 {echipa.map(m => {
                   const status = getStatusMembru(m);
                   const isEditing = membruEditat === m.id;
+                  const esteBlocat = status === "În serviciu" || status === "După serviciu";
+
                   return (
                     <div key={m.id} className="flex flex-col gap-1">
-                      <button onClick={() => setMembruEditat(isEditing ? null : m.id)}
-                        className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'}`}>
+                      <button 
+                        disabled={esteBlocat}
+                        onClick={() => setMembruEditat(isEditing ? null : m.id)}
+                        className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'} ${esteBlocat ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         {formatIdentitate(m)}
-                        <span className={`text-[9px] font-black px-3 py-2 rounded-lg text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>{status}</span>
+                        <div className="flex items-center gap-2">
+                           {esteBlocat && <Lock size={12} className="text-slate-500"/>}
+                           <span className={`text-[9px] font-black px-3 py-2 rounded-lg text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>{status}</span>
+                        </div>
                       </button>
                       {isEditing && (
                         <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl">
@@ -253,20 +233,31 @@ function App() {
             )}
             {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
             {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
+            
             {paginaCurenta === 'cantina' && (
               <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
                  <h2 className="text-lg font-black uppercase text-orange-500 mb-6 text-center">Masa la cantină ({nrLaCantina})</h2>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                   {echipa.map(m => (
-                     <button key={m.id} onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} 
-                       className={`flex justify-between items-center p-4 rounded-xl border-2 ${m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
-                       {formatIdentitate(m)}
-                       {m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>}
-                     </button>
-                   ))}
+                   {echipa.map(m => {
+                     const status = getStatusMembru(m);
+                     const estePrezent = status === "Prezent la serviciu";
+                     return (
+                       <button key={m.id} disabled={!estePrezent} onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} 
+                         className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all 
+                           ${!estePrezent ? 'opacity-20 bg-slate-950 border-transparent cursor-not-allowed' : 
+                             m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800'}`}>
+                         <div className="text-left">
+                            {formatIdentitate(m)}
+                            {!estePrezent && <span className="text-[8px] font-bold text-red-500 uppercase">{status}</span>}
+                         </div>
+                         {estePrezent && (m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>)}
+                       </button>
+                     );
+                   })}
                  </div>
               </div>
             )}
+
             {paginaCurenta === 'categorii' && (
               <div className="grid grid-cols-1 gap-4">
                 {Object.entries(categorii).map(([numeCat, oameni]) => (
@@ -282,59 +273,57 @@ function App() {
             )}
           </div>
         ) : (
-          /* INTERFATA USER */
           <div className="space-y-6">
-            {paginaCurenta === 'servicii_vizualizare' ? (
-              <div className="space-y-4">
-                <button onClick={() => setPaginaCurenta('personal')} className="text-blue-500 text-xs font-black uppercase flex items-center gap-2 mb-2">← Înapoi</button>
-                <ServiciiPage editabil={true} />
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-                  <h2 className="text-center text-xs font-black uppercase text-blue-400 mb-6 tracking-widest">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
-                  <div className="grid grid-cols-1 gap-3">
-                    {Object.keys(statusConfig).map(st => {
-                      const activ = getStatusMembru(userLogat) === st;
-                      return (
-                        <button key={st} onClick={() => schimbaStatus(userLogat.id, st)} className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${activ ? 'bg-white text-black border-white shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}`}>
-                          <div className={`p-2 rounded-lg ${activ ? 'bg-black text-white' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                          <span className="text-sm uppercase font-black">{st}</span>
-                          {activ && <Check size={24} className="ml-auto" strokeWidth={4} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+            <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
+              <h2 className="text-center text-xs font-black uppercase text-blue-400 mb-6 tracking-widest">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
+              <div className="grid grid-cols-1 gap-3">
+                {Object.keys(statusConfig).map(st => {
+                  const statusCurent = getStatusMembru(userLogat);
+                  const activ = statusCurent === st;
+                  const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu";
 
-                <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-                  <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină ({nrLaCantina})</h2>
-                  {(() => {
-                    const realTimeSelf = echipa.find(e => e.id === userLogat.id);
-                    const status = getStatusMembru(userLogat);
-                    const mananca = realTimeSelf ? realTimeSelf[`cantina_${ziKey}`] : false;
-                    const esteRestrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala"].includes(status);
-                    
-                    return (
-                      <button 
-                        onClick={() => !esteRestrictiv && toggleCantina(userLogat.id, mananca)} 
-                        disabled={esteRestrictiv}
-                        className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all 
-                          ${esteRestrictiv ? 'bg-red-950/20 border-red-900/50 opacity-50 cursor-not-allowed' : 
-                            mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
-                        <div className="flex items-center gap-4">
-                          <Utensils size={24} />
-                          <span className="text-sm uppercase font-black">
-                            {esteRestrictiv ? `Nu poți lua masa că ești în ${status}` : mananca ? "LA CANTINĂ" : "ACASĂ"}
-                          </span>
-                        </div>
-                        {esteRestrictiv ? <AlertTriangle size={24} className="text-red-500" /> : mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
-                      </button>
-                    );
-                  })()}
-                </div>
+                  return (
+                    <button 
+                      key={st} 
+                      disabled={esteBlocat}
+                      onClick={() => schimbaStatus(userLogat.id, st)} 
+                      className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
+                        ${activ ? 'bg-white text-black border-white shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
+                        ${esteBlocat ? 'opacity-30 cursor-not-allowed grayscale' : ''}`}>
+                      <div className={`p-2 rounded-lg ${activ ? 'bg-black text-white' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
+                      <div className="flex flex-col text-left">
+                        <span className="text-sm uppercase font-black">{st}</span>
+                        {esteBlocat && activ && <span className="text-[9px] font-bold text-red-600 uppercase">Blocat prin ordin</span>}
+                      </div>
+                      {activ && <Check size={24} className="ml-auto" strokeWidth={4} />}
+                      {esteBlocat && activ && <Lock size={18} className="ml-auto opacity-40"/>}
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
+
+            <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
+              <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină ({nrLaCantina})</h2>
+              {(() => {
+                const realTimeSelf = echipa.find(e => e.id === userLogat.id);
+                const status = getStatusMembru(userLogat);
+                const mananca = realTimeSelf ? realTimeSelf[`cantina_${ziKey}`] : false;
+                const estePrezent = status === "Prezent la serviciu";
+                return (
+                  <button onClick={() => estePrezent && toggleCantina(userLogat.id, mananca)} disabled={!estePrezent}
+                    className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all 
+                      ${!estePrezent ? 'bg-red-950/20 border-red-900/50 opacity-50 cursor-not-allowed' : 
+                        mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
+                    <div className="flex items-center gap-4">
+                      <Utensils size={24} />
+                      <span className="text-sm uppercase font-black">{!estePrezent ? `Status: ${status}` : mananca ? "LA CANTINĂ" : "ACASĂ"}</span>
+                    </div>
+                    {!estePrezent ? <Lock size={24} className="text-red-500" /> : mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
+                  </button>
+                );
+              })()}
+            </div>
           </div>
         )}
       </div>
