@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { doc, onSnapshot, collection, query, orderBy, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, setDoc } from 'firebase/firestore';
 import { 
   Shield, 
-  User, 
+  Lock, 
+  Eye, 
   Users, 
   Radio, 
   Zap, 
-  Eye, 
-  Lock, 
-  UserCheck 
+  UserCheck, 
+  ChevronDown 
 } from 'lucide-react';
-import { format, addDays, parse } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
 
 const ServiciiPage = ({ editabil }) => {
@@ -22,24 +22,24 @@ const ServiciiPage = ({ editabil }) => {
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
 
-  // --- FUNCȚIE PENTRU ICONIȚE ---
-  const getIcon = (functie) => {
+  // --- MAPARE ICONIȚE ---
+  const getIcon = (functie, size = 18) => {
     switch (functie) {
-      case "Ajutor OSU": return <Shield size={18} className="text-blue-400" />;
-      case "Sergent de serviciu PCT": return <Lock size={18} className="text-amber-400" />;
-      case "Planton": return <Eye size={18} className="text-emerald-400" />;
-      case "Patrulă": return <Users size={18} className="text-indigo-400" />;
-      case "Operator radio": return <Radio size={18} className="text-purple-400" />;
-      case "Intervenția 1": return <Zap size={18} className="text-red-500" />;
-      case "Intervenția 2": return <Zap size={18} className="text-orange-500" />;
-      case "Responsabil": return <UserCheck size={18} className="text-pink-400" />;
-      default: return <Shield size={18} className="text-slate-400" />;
+      case "Ajutor OSU": return <Shield size={size} className="text-blue-400" />;
+      case "Sergent de serviciu PCT": return <Lock size={size} className="text-amber-400" />;
+      case "Planton": return <Eye size={size} className="text-emerald-400" />;
+      case "Patrulă": return <Users size={size} className="text-indigo-400" />;
+      case "Operator radio": return <Radio size={size} className="text-purple-400" />;
+      case "Intervenția 1": return <Zap size={size} className="text-red-500" />;
+      case "Intervenția 2": return <Zap size={size} className="text-orange-500" />;
+      case "Responsabil": return <UserCheck size={size} className="text-pink-400" />;
+      default: return <Shield size={size} className="text-slate-400" />;
     }
   };
 
-  // --- FORMATARE LUNGĂ CU TEXT MARE ---
-  const formatTextBrut = (text) => {
-    if (!text || text === "Din altă subunitate") return text;
+  // --- FORMATARE NUME (GRAD MIC, NUME MARE) ---
+  const formatNumeInterfata = (text) => {
+    if (!text || text === "Din altă subunitate") return { grad: "", nume: text };
     
     const cifreRomane = ['I', 'II', 'III', 'IV', 'V'];
     const parti = text.split(' ');
@@ -65,18 +65,8 @@ const ServiciiPage = ({ editabil }) => {
     const prenume = prenumeRaw.charAt(0).toUpperCase() + prenumeRaw.slice(1).toLowerCase();
     const numeleFamilie = parti.slice(indexStartNume + 1).join(' ').toUpperCase();
 
-    return `${gradul} ${prenume} ${numeleFamilie}`.trim();
+    return { grad: gradul, nume: `${prenume} ${numeleFamilie}` };
   };
-
-  const zileAfisate = [-1, 0, 1, 2, 3, 4, 5].map(offset => {
-    const d = addDays(new Date(), offset);
-    return {
-      key: format(d, 'dd.MM.yyyy'),
-      display: format(d, 'EEEE, dd.MM.yyyy', { locale: ro }),
-      ziFiltru: format(d, 'yyyyMMdd'),
-      ziUrmatoareFiltru: format(addDays(d, 1), 'yyyyMMdd')
-    };
-  });
 
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
@@ -97,59 +87,74 @@ const ServiciiPage = ({ editabil }) => {
     return () => { unsubPers(); unsubCal(); unsubReg(); };
   }, []);
 
-  const handleSchimbare = async (zi, index, valoare) => {
+  const handleSchimbare = async (ziKey, index, valoare) => {
     const nouCalendar = { ...calendar };
-    if (!nouCalendar[zi.key]) nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
-    nouCalendar[zi.key].oameni[index] = valoare;
+    if (!nouCalendar[ziKey]) nouCalendar[ziKey] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
+    nouCalendar[ziKey].oameni[index] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
   };
 
   if (loading) return <div className="p-10 text-center text-white/50 font-black">SE ÎNCARCĂ...</div>;
 
+  const zileAfisate = [-1, 0, 1, 2, 3, 4, 5].map(offset => {
+    const d = addDays(new Date(), offset);
+    return { key: format(d, 'dd.MM.yyyy'), display: format(d, 'EEEE, dd.MM.yyyy', { locale: ro }) };
+  });
+
   return (
-    <div className="space-y-6 pb-20">
+    <div className="max-w-[1400px] mx-auto space-y-10 pb-24 px-4">
       {zileAfisate.map((zi) => {
         const dateZi = calendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
         const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
 
         return (
-          <div key={zi.key} className={`bg-slate-900 rounded-[2rem] border-2 transition-all ${esteAzi ? 'border-indigo-500 shadow-2xl scale-[1.02]' : 'border-slate-800'}`}>
-            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-black/30 rounded-t-[2rem]">
-              <h3 className="text-xs font-black uppercase text-white tracking-widest">{zi.display}</h3>
+          <div key={zi.key} className={`bg-[#0f172a] rounded-[2.5rem] border-2 transition-all ${esteAzi ? 'border-indigo-500 shadow-2xl' : 'border-slate-800/50'}`}>
+            <div className="p-6 border-b border-slate-800 bg-black/20 rounded-t-[2.5rem]">
+              <h3 className="text-xs font-black uppercase text-indigo-400 tracking-widest">{zi.display}</h3>
             </div>
 
-            <div className="p-4 space-y-5">
+            {/* GRID ADAPTIV: 1 coloană pe mobil, 2 pe tabletă, 3 pe PC mare */}
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {functii.map((f, idx) => {
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
                 const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
-                const listaE = reguli[f] || [];
-                const filtrati = (listaE.length > 0) ? personal.filter(p => listaE.includes(p.numeComplet)) : personal;
+                const info = formatNumeInterfata(omPlanificat);
+                const filtrati = (reguli[f] || []).length > 0 ? personal.filter(p => reguli[f].includes(p.numeComplet)) : personal;
 
                 return (
                   <div key={f} className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 ml-2">
-                      {getIcon(f)}
-                      <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{f}</label>
+                      {getIcon(f, 16)}
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{f}</label>
                     </div>
-                    {editabil ? (
-                      <select 
-                        value={omPlanificat} 
-                        onChange={(e) => handleSchimbare(zi, idx, e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 p-5 rounded-2xl text-[14px] font-black text-white outline-none appearance-none shadow-xl focus:border-indigo-500"
-                      >
-                        <option value="Din altă subunitate">DIN ALTĂ SUBUNITATE</option>
-                        {filtrati.map(p => (
-                          <option key={p.id} value={p.numeComplet}>
-                            {formatTextBrut(p.numeComplet)}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-inner">
-                        <span className="text-[14px] font-black uppercase text-white">{formatTextBrut(omPlanificat)}</span>
-                        <div className="opacity-40">{getIcon(f)}</div>
+
+                    <div className="relative group">
+                      {/* UI VIZUAL */}
+                      <div className="w-full bg-[#020617] border border-slate-800 rounded-2xl p-5 flex justify-between items-center min-h-[80px] transition-colors group-hover:border-slate-600">
+                        <div className="text-left overflow-hidden mr-4">
+                          <p className="text-[10px] font-bold text-indigo-400/80 leading-none mb-1.5">{info.grad}</p>
+                          <p className="text-[15px] font-black text-white uppercase tracking-tight truncate">{info.nume}</p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="bg-slate-900/50 p-2 rounded-lg">{getIcon(f, 20)}</div>
+                          {editabil && <ChevronDown size={18} className="text-slate-700" />}
+                        </div>
                       </div>
-                    )}
+
+                      {/* SELECT NATIV (Invisible Overlay) */}
+                      {editabil && (
+                        <select 
+                          value={omPlanificat} 
+                          onChange={(e) => handleSchimbare(zi.key, idx, e.target.value)}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        >
+                          <option value="Din altă subunitate">DIN ALTĂ SUBUNITATE</option>
+                          {filtrati.map(p => (
+                            <option key={p.id} value={p.numeComplet}>{p.numeComplet}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   </div>
                 );
               })}
