@@ -15,13 +15,13 @@ import ServiciiPage from './ServiciiPage';
 import ConfigurareEfectiv from './ConfigurareEfectiv';
 
 const statusConfig = {
-  "Prezent la serviciu": { color: "bg-green-600", icon: <Activity size={20} /> },
-  "În serviciu": { color: "bg-blue-600", icon: <Briefcase size={20} /> },
-  "După serviciu": { color: "bg-slate-500", icon: <Coffee size={20} /> },
-  "Zi liberă": { color: "bg-yellow-600", icon: <Home size={20} /> },
-  "Concediu": { color: "bg-purple-600", icon: <Umbrella size={20} /> },
-  "Deplasare": { color: "bg-orange-600", icon: <MapPin size={20} /> },
-  "Foaie de boala": { color: "bg-red-600", icon: <Stethoscope size={20} /> },
+  "Prezent la serviciu": { color: "bg-green-600", icon: <Activity size={18} /> },
+  "În serviciu": { color: "bg-blue-600", icon: <Briefcase size={18} /> },
+  "După serviciu": { color: "bg-slate-500", icon: <Coffee size={18} /> },
+  "Zi liberă": { color: "bg-yellow-600", icon: <Home size={18} /> },
+  "Concediu": { color: "bg-purple-600", icon: <Umbrella size={18} /> },
+  "Deplasare": { color: "bg-orange-600", icon: <MapPin size={18} /> },
+  "Foaie de boala": { color: "bg-red-600", icon: <Stethoscope size={18} /> },
 };
 
 function App() {
@@ -36,7 +36,6 @@ function App() {
 
   const vibreaza = (ms = 40) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
-  // Configurare 4 zile
   const optiuniZile = [0, 1, 2, 3].map(i => {
     const d = addDays(new Date(), i);
     let label = i === 0 ? "Azi" : i === 1 ? "Mâine" : format(d, 'eeee', { locale: ro });
@@ -56,21 +55,23 @@ function App() {
 
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
-    return onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
       setEchipa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, "setari", "indicatii"), (docSnap) => {
+    const unsub = onSnapshot(doc(db, "setari", "indicatii"), (docSnap) => {
       if (docSnap.exists()) setIndicatii(docSnap.data().text);
     });
+    return () => unsub();
   }, []);
 
   const login = (cod) => {
     vibreaza(60);
     if (cod === "0000") {
-      const admin = { rol: 'admin', nume: 'Administrator', id: 'admin' };
+      const admin = { rol: 'admin', nume: 'Admin', id: 'admin' };
       setUserLogat(admin);
       localStorage.setItem('userEfectiv', JSON.stringify(admin));
       setPaginaCurenta('categorii');
@@ -87,39 +88,35 @@ function App() {
 
   const logout = () => { localStorage.removeItem('userEfectiv'); setUserLogat(null); setPaginaCurenta('login'); };
 
-  // FUNCȚIA PRINCIPALĂ DE LOGICĂ ȘI SINCRONIZARE
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(50);
     const membru = echipa.find(m => m.id === id);
-    const ziCurentaFormatata = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
+    const dataF = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
 
-    // Regula: Nu poți pune "În serviciu" dacă ai fost "În serviciu" ieri
     if (nouStatus === "În serviciu" && ziSelectata > 0) {
       const ieriKey = optiuniZile[ziSelectata - 1].key;
       if (membru[`status_${ieriKey}`] === "În serviciu") {
-        alert("Eroare: Nu se pot efectua servicii în zile consecutive!");
+        alert("Eroare: Servicii consecutive interzise!");
         return;
       }
     }
 
     const updateObj = { [`status_${ziKey}`]: nouStatus, status: nouStatus };
 
-    // Regula automată: În serviciu azi -> După serviciu mâine
     if (nouStatus === "În serviciu" && ziSelectata < 3) {
       const maineKey = optiuniZile[ziSelectata + 1].key;
       updateObj[`status_${maineKey}`] = "După serviciu";
       updateObj[`cantina_${maineKey}`] = false;
     }
 
-    // Curățare cantină pentru statusuri restrictive
     if (["Zi liberă", "Concediu", "Deplasare", "Foaie de boala", "După serviciu"].includes(nouStatus)) {
       updateObj[`cantina_${ziKey}`] = false;
     }
 
     await updateDoc(doc(db, "echipa", id), updateObj);
 
-    // SINCRONIZARE TABEL SERVICII (CALENDAR)
-    const numeComplet = `${membru.grad} ${membru.prenume} ${membru.nume}`.toUpperCase();
+    // Sincronizare Calendar Servicii
+    const numeC = `${membru.grad} ${membru.nume}`.toUpperCase();
     const [regSnap, calSnap] = await Promise.all([
       getDoc(doc(db, "setari", "reguli_servicii")),
       getDoc(doc(db, "servicii", "calendar"))
@@ -129,17 +126,11 @@ function App() {
       const reguli = regSnap.data();
       let calendar = calSnap.data().data || {};
       const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
-      
-      let indexFunctie = functii.findIndex(f => reguli[f]?.includes(numeComplet));
-      
-      if (indexFunctie !== -1) {
-        if (!calendar[ziCurentaFormatata]) calendar[ziCurentaFormatata] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
-        
-        if (nouStatus === "În serviciu") {
-          calendar[ziCurentaFormatata].oameni[indexFunctie] = numeComplet;
-        } else if (calendar[ziCurentaFormatata].oameni[indexFunctie] === numeComplet) {
-          calendar[ziCurentaFormatata].oameni[indexFunctie] = "Din altă subunitate";
-        }
+      let idx = functii.findIndex(f => reguli[f]?.includes(numeC));
+      if (idx !== -1) {
+        if (!calendar[dataF]) calendar[dataF] = { oameni: Array(8).fill("Din altă subunitate"), mod: "2" };
+        if (nouStatus === "În serviciu") calendar[dataF].oameni[idx] = numeC;
+        else if (calendar[dataF].oameni[idx] === numeC) calendar[dataF].oameni[idx] = "Din altă subunitate";
         await setDoc(doc(db, "servicii", "calendar"), { data: calendar });
       }
     }
@@ -151,96 +142,69 @@ function App() {
     await updateDoc(doc(db, "echipa", id), { [`cantina_${ziKey}`]: !stare });
   };
 
-  const formatIdentitate = (m) => (
-    <div className="flex flex-col text-left">
-      <span className="text-[10px] font-medium text-white/70 leading-none mb-1 uppercase">{m?.grad}</span>
-      <span className="text-sm font-black text-white uppercase">{m?.prenume} {m?.nume}</span>
-    </div>
-  );
-
   if (paginaCurenta === 'login') return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center font-sans">
-      <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 w-full max-w-sm shadow-2xl">
-        <Lock size={48} className="mx-auto mb-6 text-blue-500" />
-        <h1 className="text-2xl font-black uppercase mb-8 tracking-tighter">Acces Sistem</h1>
-        <input type="password" value={inputCod} onChange={(e) => setInputCod(e.target.value)} className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-4xl mb-4 outline-none focus:border-blue-500 transition-all" placeholder="****" maxLength="4" />
-        <button onClick={() => login(inputCod)} className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black uppercase shadow-lg transition-all">Autentificare</button>
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <div className="bg-slate-900 p-8 rounded-3xl w-full max-w-xs text-center border border-slate-800">
+        <Lock size={40} className="mx-auto mb-4 text-blue-500" />
+        <input type="password" value={inputCod} onChange={(e) => setInputCod(e.target.value)} className="w-full bg-black border border-slate-700 p-4 rounded-xl text-center text-3xl mb-4 text-white" placeholder="****" />
+        <button onClick={() => login(inputCod)} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase">Login</button>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-4 font-sans">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-black text-white p-2 pb-10">
+      <div className="max-w-md mx-auto">
         
-        {/* Header Utilizator */}
-        <div className="flex justify-between items-center mb-6 bg-slate-900 p-4 rounded-3xl border border-slate-800 shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2.5 rounded-xl"><CalendarDays size={20} /></div>
-            <div>{userLogat?.rol === 'admin' ? <span className="font-black uppercase text-sm text-blue-400">Comandă Subunitate</span> : formatIdentitate(echipa.find(e => e.id === userLogat?.id))}</div>
+        {/* Header */}
+        <div className="flex justify-between items-center p-4 bg-slate-900 rounded-2xl mb-4 border border-slate-800">
+          <div className="flex items-center gap-2">
+            <CalendarDays size={20} className="text-blue-500" />
+            <span className="font-bold text-sm uppercase">{userLogat?.nume}</span>
           </div>
-          <button onClick={logout} className="p-2.5 text-red-500 hover:bg-red-500/10 rounded-xl transition-all"><LogOut size={20}/></button>
+          <button onClick={logout} className="text-red-500"><LogOut size={20}/></button>
         </div>
 
-        {/* Indicații Comandant */}
-        <div className="bg-slate-900 p-5 rounded-[2rem] border border-slate-800 mb-6 shadow-xl relative overflow-hidden">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-[10px] font-black uppercase text-slate-500 flex items-center gap-2 tracking-widest"><Edit3 size={12}/> Indicații Comandant</span>
+        {/* Indicatii */}
+        <div className="bg-slate-900 p-4 rounded-2xl mb-4 border border-slate-800">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Indicații Comandant</span>
             {userLogat?.rol === 'admin' && (
-              <button onClick={async () => { if (editIndicatii) await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); setEditIndicatii(!editIndicatii); }} className="text-[9px] font-black bg-blue-600 px-4 py-1.5 rounded-full hover:bg-blue-500 transition-all">
-                {editIndicatii ? 'SALVEAZĂ' : 'MODIFICĂ'}
+              <button onClick={async () => { if (editIndicatii) await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); setEditIndicatii(!editIndicatii); }} className="text-[10px] bg-blue-600 px-2 py-1 rounded">
+                {editIndicatii ? 'SALVEAZĂ' : 'EDIT'}
               </button>
             )}
           </div>
-          {editIndicatii ? (
-            <textarea value={indicatii} onChange={(e) => setIndicatii(e.target.value)} className="w-full bg-slate-950 p-4 rounded-2xl text-sm border border-blue-500 outline-none h-28 resize-none shadow-inner" />
-          ) : (
-            <div className="bg-black/20 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold italic text-blue-50 leading-relaxed">{indicatii || "Nu sunt indicații noi pentru astăzi."}</p></div>
-          )}
+          {editIndicatii ? <textarea value={indicatii} onChange={(e) => setIndicatii(e.target.value)} className="w-full bg-black p-2 rounded text-sm text-white h-20 border border-blue-900" /> : <p className="text-sm italic text-blue-100">{indicatii || "Nu sunt indicații."}</p>}
         </div>
 
-        {/* Selector 4 Zile */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+        {/* Selector Zile */}
+        <div className="flex gap-1 mb-4 overflow-x-auto pb-2">
           {optiuniZile.map((zi, index) => (
-            <button key={zi.key} onClick={() => setZiSelectata(index)} 
-              className={`flex-1 min-w-[100px] py-4 rounded-2xl border-2 transition-all duration-200 ${ziSelectata === index ? 'bg-blue-700 border-blue-400 shadow-lg scale-[1.02]' : 'bg-slate-900 border-slate-800 opacity-50 hover:opacity-80'}`}>
-              <p className="text-[9px] font-black uppercase mb-1 tracking-tighter opacity-70">{zi.label}</p>
-              <p className="text-xs font-black">{format(zi.data, 'dd MMM')}</p>
+            <button key={zi.key} onClick={() => setZiSelectata(index)} className={`flex-1 min-w-[80px] py-3 rounded-xl border ${ziSelectata === index ? 'bg-blue-600 border-blue-400' : 'bg-slate-900 border-slate-800'}`}>
+              <p className="text-[8px] uppercase font-bold opacity-60">{zi.label}</p>
+              <p className="text-[10px] font-bold">{format(zi.data, 'dd MMM')}</p>
             </button>
           ))}
         </div>
 
         {userLogat?.rol === 'admin' ? (
-          <div className="space-y-6">
-            {/* Navigare Admin */}
-            <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 gap-1 overflow-x-auto shadow-inner">
-              {[
-                { id: 'categorii', label: 'Sumar' },
-                { id: 'cantina', label: 'Masă' },
-                { id: 'lista', label: 'Listă' },
-                { id: 'servicii', label: 'Servicii' },
-                { id: 'config_servicii', label: 'Eligibili' }
-              ].map((p) => (
-                <button key={p.id} onClick={() => setPaginaCurenta(p.id)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[9px] uppercase transition-all whitespace-nowrap ${paginaCurenta === p.id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}>
-                  {p.label}
-                </button>
+          <div className="space-y-4">
+            <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 gap-1 overflow-x-auto">
+              {['categorii','cantina','lista','servicii','config'].map(p => (
+                <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-2 px-2 rounded-lg text-[9px] font-bold uppercase ${paginaCurenta === p ? 'bg-blue-600' : 'text-slate-500'}`}>{p}</button>
               ))}
             </div>
 
             {paginaCurenta === 'categorii' && (
-              <div className="grid grid-cols-1 gap-4">
-                {Object.keys(statusConfig).map(status => {
-                  const oameni = echipa.filter(m => (m[`status_${ziKey}`] || "Nespecificat") === status);
+              <div className="space-y-2">
+                {Object.keys(statusConfig).map(st => {
+                  const oameni = echipa.filter(m => (m[`status_${ziKey}`] || "Nespecificat") === st);
                   if (oameni.length === 0) return null;
                   return (
-                    <div key={status} className="bg-slate-900 p-5 rounded-[2rem] border border-slate-800 shadow-lg">
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="font-black text-xs uppercase flex items-center gap-3">{statusConfig[status].icon} {status}</span>
-                        <span className="bg-blue-600 px-3 py-1 rounded-full text-[10px] font-black">{oameni.length}</span>
-                      </div>
-                      <div className="grid gap-2">
-                        {oameni.map(o => <div key={o.id} className="text-[11px] bg-black/30 p-3 rounded-xl border border-white/5 font-bold uppercase tracking-tight">{o.grad} {o.prenume} {o.nume}</div>)}
-                      </div>
+                    <div key={st} className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+                      <div className="bg-slate-800 p-2 flex justify-between px-4"><span className="text-[10px] font-bold uppercase">{st}</span><span className="text-[10px]">{oameni.length}</span></div>
+                      <div className="p-2">{oameni.map(o => <div key={o.id} className="text-[10px] py-1 border-b border-white/5 uppercase font-bold text-slate-300">{o.grad} {o.nume}</div>)}</div>
                     </div>
                   );
                 })}
@@ -248,13 +212,17 @@ function App() {
             )}
 
             {paginaCurenta === 'cantina' && (
-              <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 text-center shadow-2xl">
-                <div className="bg-orange-500/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-orange-500/30"><Utensils className="text-orange-500" size={32} /></div>
-                <h2 className="text-3xl font-black tracking-tighter mb-2">{echipa.filter(m => m[`cantina_${ziKey}`]).length} PERSOANE</h2>
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-8">Înscriși la masa la cantină</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
-                  {echipa.filter(m => m[`cantina_${ziKey}`]).map(m => (
-                    <div key={m.id} className="text-[10px] bg-slate-950 p-3 rounded-xl border border-white/5 font-black flex items-center gap-3"><div className="w-1.5 h-1.5 bg-orange-500 rounded-full" /> {m.grad} {m.nume}</div>
+              <div className="space-y-3">
+                <div className="bg-orange-600 p-4 rounded-xl text-center font-bold">
+                  <p className="text-2xl">{echipa.filter(m => m[`cantina_${ziKey}`]).length}</p>
+                  <p className="text-[10px] uppercase">La Masă</p>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {echipa.map(m => (
+                    <button key={m.id} onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} className={`flex justify-between p-3 rounded-xl border ${m[`cantina_${ziKey}`] ? 'bg-orange-900/40 border-orange-500' : 'bg-slate-900 border-slate-800'}`}>
+                      <span className="text-[10px] font-bold uppercase">{m.grad} {m.nume}</span>
+                      {m[`cantina_${ziKey}`] ? <Check size={14} className="text-orange-500" /> : <X size={14} className="text-slate-600" />}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -263,16 +231,14 @@ function App() {
             {paginaCurenta === 'lista' && (
               <div className="space-y-2">
                 {echipa.map(m => (
-                  <div key={m.id} className="flex flex-col gap-1">
-                    <button onClick={() => setMembruEditat(membruEditat === m.id ? null : m.id)} className={`w-full bg-slate-900 p-5 rounded-2xl border transition-all flex justify-between items-center ${membruEditat === m.id ? 'border-blue-500 shadow-lg bg-slate-800' : 'border-slate-800'}`}>
-                      {formatIdentitate(m)}
-                      <span className={`text-[9px] font-black px-4 py-2 rounded-lg text-white shadow-sm ${statusConfig[m[`status_${ziKey}`]]?.color || 'bg-slate-700'}`}>{m[`status_${ziKey}`] || 'NESPECIFICAT'}</span>
+                  <div key={m.id}>
+                    <button onClick={() => setMembruEditat(membruEditat === m.id ? null : m.id)} className="w-full flex justify-between bg-slate-900 p-4 rounded-xl border border-slate-800 text-[10px] font-bold uppercase">
+                      <span>{m.grad} {m.nume}</span>
+                      <span className="text-blue-400">{m[`status_${ziKey}`] || '---'}</span>
                     </button>
                     {membruEditat === m.id && (
-                      <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 rounded-b-3xl border-x border-b border-slate-800 animate-in slide-in-from-top-2">
-                        {Object.keys(statusConfig).map(st => (
-                          <button key={st} onClick={() => schimbaStatus(m.id, st)} className="p-3 rounded-xl bg-slate-900 text-[9px] font-black uppercase border border-slate-800 flex items-center gap-2 hover:bg-slate-800 transition-all">{statusConfig[st].icon} {st}</button>
-                        ))}
+                      <div className="grid grid-cols-2 gap-1 p-2 bg-black">
+                        {Object.keys(statusConfig).map(s => <button key={s} onClick={() => schimbaStatus(m.id, s)} className="p-2 text-[8px] bg-slate-800 rounded uppercase font-bold">{s}</button>)}
                       </div>
                     )}
                   </div>
@@ -281,51 +247,41 @@ function App() {
             )}
 
             {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
-            {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
+            {paginaCurenta === 'config' && <ConfigurareEfectiv />}
           </div>
         ) : (
           /* USER VIEW */
           <div className="space-y-4">
-            <button onClick={() => { vibreaza(40); setPaginaCurenta(paginaCurenta === 'servicii_u' ? 'personal' : 'servicii_u'); }} className="w-full bg-slate-900 border-2 border-slate-800 p-6 rounded-[2rem] font-black uppercase flex justify-between items-center shadow-xl group">
-              <div className="flex items-center gap-4"><Shield className="text-blue-500 group-hover:scale-110 transition-transform" /><span className="text-sm">Planificare Servicii</span></div>
-              <ExternalLink size={20} className="opacity-30" />
+            <button onClick={() => setPaginaCurenta(paginaCurenta === 'ser' ? 'p' : 'ser')} className="w-full bg-slate-900 p-4 rounded-xl border border-slate-800 font-bold uppercase text-[10px] flex justify-between">
+              <span>Servicii Unitate</span><ExternalLink size={16}/>
             </button>
-
-            {paginaCurenta === 'servicii_u' ? (
-              <div className="animate-in fade-in duration-300"><ServiciiPage editabil={true} /></div>
-            ) : (
-              <div className="space-y-6">
-                <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-2xl">
-                  <h2 className="text-center font-black text-[10px] text-blue-400 mb-6 uppercase tracking-[0.2em]">Selectează Status {optiuniZile[ziSelectata].label}</h2>
-                  <div className="grid gap-3">
+            {paginaCurenta === 'ser' ? <ServiciiPage editabil={true} /> : (
+              <div className="space-y-4">
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
+                  <p className="text-center text-[10px] font-bold text-blue-400 mb-4 uppercase">Status {optiuniZile[ziSelectata].label}</p>
+                  <div className="grid gap-2">
                     {Object.keys(statusConfig).map(st => {
                       const activ = echipa.find(e => e.id === userLogat.id)?.[`status_${ziKey}`] === st;
                       return (
-                        <button key={st} onClick={() => schimbaStatus(userLogat.id, st)} className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${activ ? 'bg-white text-black border-white shadow-xl scale-[1.02]' : 'bg-slate-950 border-slate-800 opacity-60 text-white hover:opacity-100'}`}>
-                          <div className={`p-2 rounded-lg ${activ ? 'bg-black text-white' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                          <span className="font-black text-sm uppercase">{st}</span>
-                          {activ && <Check size={24} className="ml-auto" strokeWidth={4} />}
+                        <button key={st} onClick={() => schimbaStatus(userLogat.id, st)} className={`flex items-center gap-3 p-4 rounded-xl border ${activ ? 'bg-white text-black' : 'bg-black border-slate-800 text-white'}`}>
+                          {statusConfig[st].icon} <span className="text-[10px] font-bold uppercase">{st}</span>
                         </button>
                       );
                     })}
                   </div>
                 </div>
-
-                <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-2xl">
-                  <h2 className="text-center font-black text-[10px] text-orange-500 mb-6 uppercase tracking-[0.2em]">Masa la Cantină</h2>
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800">
                   {(() => {
                     const m = echipa.find(e => e.id === userLogat.id);
                     const mananca = m?.[`cantina_${ziKey}`];
-                    const statusAzi = m?.[`status_${ziKey}`];
-                    const poateManca = statusAzi === "Prezent la serviciu";
+                    const poate = m?.[`status_${ziKey}`] === "Prezent la serviciu";
                     return (
-                      <button onClick={() => poateManca && toggleCantina(userLogat.id, mananca)} disabled={!poateManca} className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all ${!poateManca ? 'opacity-20 cursor-not-allowed bg-slate-950 border-slate-800' : mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
-                        <div className="flex gap-4 font-black uppercase text-sm items-center"><Utensils /> {mananca ? "ÎNSCRIAS LA CANTINĂ" : "MĂNÂNC ACASĂ"}</div>
-                        {poateManca ? (mananca ? <Check strokeWidth={4} /> : <X strokeWidth={4} className="text-red-500" />) : <AlertTriangle className="text-orange-500" />}
+                      <button onClick={() => poate && toggleCantina(userLogat.id, mananca)} className={`w-full p-4 rounded-xl border flex justify-between items-center ${!poate ? 'opacity-20' : mananca ? 'bg-orange-600' : 'bg-black'}`}>
+                        <span className="text-[10px] font-bold uppercase"><Utensils size={14} className="inline mr-2"/> {mananca ? "LA MASĂ" : "ACASĂ"}</span>
+                        {mananca && <Check size={16}/>}
                       </button>
                     );
                   })()}
-                  {!echipa.find(e => e.id === userLogat.id)?.[`status_${ziKey}`] && <p className="text-center text-[9px] mt-4 text-slate-500 font-bold uppercase italic">Alege statusul pentru a debloca masa</p>}
                 </div>
               </div>
             )}
@@ -335,4 +291,5 @@ function App() {
     </div>
   );
 }
+
 export default App;
