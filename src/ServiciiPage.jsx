@@ -46,18 +46,10 @@ const ServiciiPage = ({ editabil }) => {
   }, []);
 
   const handleSchimbare = async (zi, index, valoare) => {
-    if (valoare === "Din altă subunitate") {
-        const nouCalendar = JSON.parse(JSON.stringify(calendar));
-        if (!nouCalendar[zi.key]) return;
-        nouCalendar[zi.key].oameni[index] = valoare;
-        await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
-        return;
-    }
-
     const nouCalendar = JSON.parse(JSON.stringify(calendar));
+    const vechiulOmNume = calendar[zi.key]?.oameni[index];
     const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
     
-    // Generăm cheile pentru ieri și mâine
     const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
     const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
     
@@ -65,23 +57,36 @@ const ServiciiPage = ({ editabil }) => {
     const oameniAzi = calendar[zi.key]?.oameni || [];
     const oameniMaine = calendar[maineKey]?.oameni || [];
 
-    // RESTRICȚIE 1: Nu în aceeași zi
-    if (oameniAzi.includes(valoare)) {
-      alert(`⚠️ ${valoare} este deja planificat azi!`);
-      return;
-    }
-
-    // RESTRICȚIE 2: Nu 2 zile la rând (Ieri sau Mâine)
-    if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
-      alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
-      return;
+    // 1. RESTRICȚII (doar dacă nu e "Din altă subunitate")
+    if (valoare !== "Din altă subunitate") {
+      if (oameniAzi.includes(valoare)) {
+        alert(`⚠️ ${valoare} este deja planificat azi!`);
+        return;
+      }
+      if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
+        alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
+        return;
+      }
     }
 
     const functiaCurenta = functii[index];
     const esteInterventie = functiaCurenta.includes("Intervenția");
 
-    // Sincronizare Status (dacă nu e intervenție)
-    if (!esteInterventie) {
+    // 2. ACTUALIZARE STATUS ÎN LISTĂ/SUMAR
+    
+    // Curățăm statusul vechiului om (dacă nu era la intervenție)
+    if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate" && !esteInterventie) {
+      const omV = personal.find(p => p.numeComplet === vechiulOmNume);
+      if (omV) {
+        await updateDoc(doc(db, "echipa", omV.id), { 
+          [`status_${zi.ziFiltru}`]: "Prezent la serviciu",
+          [`status_${zi.ziUrmatoareFiltru}`]: "Prezent la serviciu"
+        });
+      }
+    }
+
+    // Setăm statusul noului om (dacă nu e la intervenție)
+    if (valoare !== "Din altă subunitate" && !esteInterventie) {
       const omN = personal.find(p => p.numeComplet === valoare);
       if (omN) {
         await updateDoc(doc(db, "echipa", omN.id), { 
@@ -91,6 +96,7 @@ const ServiciiPage = ({ editabil }) => {
       }
     }
 
+    // 3. SALVARE ÎN CALENDAR
     if (!nouCalendar[zi.key]) nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
     nouCalendar[zi.key].oameni[index] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
@@ -138,7 +144,7 @@ const ServiciiPage = ({ editabil }) => {
                         onChange={(e) => handleSchimbare(zi, idx, e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
                       >
-                        <option value="Din altă subunitate">Din altă subunitate</option>
+                        <option value="Din altă subunitate">ALEGE PERSOANA</option>
                         {filtrati.map(p => (
                           <option key={p.id} value={p.numeComplet}>{p.numeComplet}</option>
                         ))}
