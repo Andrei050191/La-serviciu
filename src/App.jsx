@@ -35,6 +35,13 @@ function App() {
   const [editIndicatii, setEditIndicatii] = useState(false);
   const [mesajNou, setMesajNou] = useState(false);
 
+  // Funcția de vibrație haptică
+  const vibreaza = (ms = 40) => {
+    if (navigator.vibrate) {
+      navigator.vibrate(ms);
+    }
+  };
+
   const optiuniZile = [
     { label: 'Azi', data: new Date(), key: format(new Date(), 'yyyyMMdd') },
     { label: 'Mâine', data: addDays(new Date(), 1), key: format(addDays(new Date(), 1), 'yyyyMMdd') }
@@ -81,6 +88,7 @@ function App() {
   }, []);
 
   const login = (cod) => {
+    vibreaza(60);
     if (cod === "0000") {
       const admin = { rol: 'admin', nume: 'Administrator' }; setUserLogat(admin);
       localStorage.setItem('userEfectiv', JSON.stringify(admin)); setPaginaCurenta('categorii'); return;
@@ -92,14 +100,14 @@ function App() {
     } else { setEroareLogin(true); setInputCod(""); }
   };
 
-  const logout = () => { localStorage.removeItem('userEfectiv'); setUserLogat(null); setPaginaCurenta('login'); };
+  const logout = () => { vibreaza(30); localStorage.removeItem('userEfectiv'); setUserLogat(null); setPaginaCurenta('login'); };
 
   const schimbaStatus = async (id, nouStatus) => {
+    vibreaza(50);
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
     const ziCurentaFormatata = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
     const ziIeriFormatata = format(addDays(optiuniZile[ziSelectata].data, -1), 'dd.MM.yyyy');
 
-    // Dacă statusul devine unul restrictiv, scoatem automat bifa de cantină
     const restrictiv = ["Zi liberă", "Concediu", "Deplasare", "Foaie de boala"].includes(nouStatus);
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
     if (restrictiv) updateObj[`cantina_${ziKeyFiltru}`] = false;
@@ -137,6 +145,7 @@ function App() {
   };
 
   const toggleCantina = async (id, stare) => {
+    vibreaza(40);
     await updateDoc(doc(db, "echipa", id), { [`cantina_${ziKey}`]: !stare });
   };
 
@@ -180,7 +189,7 @@ function App() {
 
         <div className="flex gap-2 mb-4">
           {optiuniZile.map((zi, index) => (
-            <button key={zi.key} onClick={() => setZiSelectata(index)} 
+            <button key={zi.key} onClick={() => { vibreaza(25); setZiSelectata(index); }} 
               className={`flex-1 py-4 rounded-2xl border-2 transition-all ${ziSelectata === index ? 'bg-blue-700 border-blue-400' : 'bg-slate-900 border-slate-800 opacity-60'}`}>
               <p className="text-[10px] font-black uppercase opacity-60 mb-1">{zi.label}</p>
               <p className="text-sm font-black text-white">{format(zi.data, 'dd MMM')}</p>
@@ -193,7 +202,7 @@ function App() {
             <div className="flex justify-between items-center mb-4">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Indicații Comandant</span>
               {userLogat?.rol === 'admin' && (
-                <button onClick={async () => { if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
+                <button onClick={async () => { vibreaza(40); if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
                   className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">{editIndicatii ? 'Gata' : 'Modifică'}</button>
               )}
             </div>
@@ -206,7 +215,7 @@ function App() {
           </div>
 
           {userLogat?.rol === 'user' && (
-            <button onClick={() => setPaginaCurenta(paginaCurenta === 'servicii_vizualizare' ? 'personal' : 'servicii_vizualizare')} 
+            <button onClick={() => { vibreaza(40); setPaginaCurenta(paginaCurenta === 'servicii_vizualizare' ? 'personal' : 'servicii_vizualizare'); }} 
               className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div>
@@ -221,7 +230,7 @@ function App() {
           <div className="space-y-6">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
               {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
-                <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+                <button key={p} onClick={() => { vibreaza(30); setPaginaCurenta(p); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
                   {p.replace('config_', '').replace('categorii', 'sumar').replace('cantina', 'masă')}
                 </button>
               ))}
@@ -234,7 +243,7 @@ function App() {
                   const isEditing = membruEditat === m.id;
                   return (
                     <div key={m.id} className="flex flex-col gap-1">
-                      <button onClick={() => setMembruEditat(isEditing ? null : m.id)}
+                      <button onClick={() => { vibreaza(30); setMembruEditat(isEditing ? null : m.id); }}
                         className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'}`}>
                         {formatIdentitate(m)}
                         <span className={`text-[9px] font-black px-3 py-2 rounded-lg text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>{status}</span>
@@ -282,11 +291,10 @@ function App() {
             )}
           </div>
         ) : (
-          /* INTERFATA USER */
           <div className="space-y-6">
             {paginaCurenta === 'servicii_vizualizare' ? (
               <div className="space-y-4">
-                <button onClick={() => setPaginaCurenta('personal')} className="text-blue-500 text-xs font-black uppercase flex items-center gap-2 mb-2">← Înapoi</button>
+                <button onClick={() => { vibreaza(30); setPaginaCurenta('personal'); }} className="text-blue-500 text-xs font-black uppercase flex items-center gap-2 mb-2">← Înapoi</button>
                 <ServiciiPage editabil={true} />
               </div>
             ) : (
