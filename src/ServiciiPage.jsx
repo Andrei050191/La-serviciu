@@ -1,137 +1,135 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Calendar, Users, User, ShieldCheck } from 'lucide-react';
+import { doc, onSnapshot, collection, query, orderBy, setDoc, updateDoc } from 'firebase/firestore';
+import { Shield, User, Users } from 'lucide-react';
+import { format, addDays, parse } from 'date-fns';
+import { ro } from 'date-fns/locale';
 
-const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
-
-const persoaneToate = [
-  "Din altă subunitate", "lt.col. Bordea Andrei", "lt. Bodiu Sergiu", "lt. Dermindje Mihail", 
-  "lt. Samoschin Anton", "sg.II Plugaru Iurie", "sg.III Botnari Anastasia", "sg.III Murafa Oleg", 
-  "sg.III Ungureanu Andrei", "sg.III Zamaneagra Aliona", "sg.III Boțoc Dumitru", "sold.I Răileanu Marina", 
-  "sold.I Rotari Natalia", "sold.I Smirnov Silvia", "sold.I Tuceacov Nicolae", "cap. Pinzari Vladimir", 
-  "sold.II Cucer Oxana", "sold.II Vovc Dan", "sold.III Roler Ira" 
-];
-
-const reguliServicii = {
-  "Ajutor OSU": ["lt. Bodiu Sergiu", "lt. Dermindje Mihail", "lt. Samoschin Anton"],
-  "Sergent de serviciu PCT": ["sg.II Plugaru Iurie", "sg.III Zamaneagra Aliona", "sg.III Murafa Oleg", "sg.III Boțoc Dumitru"],
-  "Planton": ["sold.I Tuceacov Nicolae", "sold.II Cucer Oxana", "sold.III Roler Ira", "sold.II Vovc Dan"],
-  "Patrulă": ["sold.I Tuceacov Nicolae", "cap. Pinzari Vladimir"],
-  "Operator radio": ["sg.III Ungureanu Andrei", "sg.III Botnari Anastasia", "sold.I Smirnov Silvia"],
-  "Intervenția 1": persoaneToate.filter(p => p !== "Din altă subunitate"),
-  "Intervenția 2": persoaneToate.filter(p => p !== "Din altă subunitate"),
-  "Responsabil": ["lt.col. Bordea Andrei"]
-};
-
-const ServiciiPage = ({ editabil = true, ziSelectata = null }) => {
+const ServiciiPage = ({ editabil }) => {
   const [calendar, setCalendar] = useState({});
-  const [incarcare, setIncarcare] = useState(true);
+  const [personal, setPersonal] = useState([]);
+  const [reguli, setReguli] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  const getZileSaptamana = (dataStr) => {
-    try {
-      const parti = dataStr.split('.');
-      const data = new Date(parti[2], parti[1] - 1, parti[0]);
-      return data.toLocaleDateString('ro-RO', { weekday: 'long' }).toUpperCase();
-    } catch (e) {
-      return "DATA INVALIDĂ";
-    }
-  };
+  const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
 
-  const zileDeAfisat = ziSelectata 
-    ? [ziSelectata] 
-    : Array.from({ length: 6 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() + i - 1);
-        return d.toLocaleDateString("ro-RO");
-      });
+  const zileAfisate = [-1, 0, 1, 2, 3, 4, 5].map(offset => {
+    const d = addDays(new Date(), offset);
+    return {
+      key: format(d, 'dd.MM.yyyy'),
+      display: format(d, 'EEEE, dd.MM.yyyy', { locale: ro }),
+      ziFiltru: format(d, 'yyyyMMdd')
+    };
+  });
 
   useEffect(() => {
-    const ref = doc(db, "servicii", "calendar");
-    const unsubscribe = onSnapshot(ref, (snap) => {
-      if (snap.exists()) setCalendar(snap.data().data || {});
-      setIncarcare(false);
+    const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
+    const unsubPers = onSnapshot(q, (snap) => {
+      setPersonal(snap.docs.map(d => ({
+        id: d.id,
+        numeComplet: `${d.data().grad || ''} ${d.data().prenume || ''} ${d.data().nume || ''}`.trim().toUpperCase(),
+        original: d.data()
+      })));
     });
-    return () => unsubscribe();
+
+    const unsubCal = onSnapshot(doc(db, "servicii", "calendar"), (snap) => {
+      if (snap.exists()) setCalendar(snap.data().data || {});
+      setLoading(false);
+    });
+
+    const unsubReg = onSnapshot(doc(db, "setari", "reguli_servicii"), (snap) => {
+      if (snap.exists()) setReguli(snap.data());
+    });
+
+    return () => { unsubPers(); unsubCal(); unsubReg(); };
   }, []);
 
-  const salveazaCalendar = async (dateNoi) => {
-    await setDoc(doc(db, "servicii", "calendar"), { data: dateNoi }, { merge: true });
+  const handleSchimbare = async (ziKey, index, valoare, ziFiltru) => {
+    const nouCalendar = { ...calendar };
+    if (!nouCalendar[ziKey]) nouCalendar[ziKey] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
+    
+    const vechiulOmNume = nouCalendar[ziKey].oameni[index];
+    const totiOameniiAzi = nouCalendar[ziKey].oameni;
+
+    // 1. RESTRICȚIE: Nu în 2 servicii în aceeași zi
+    if (valoare !== "Din altă subunitate" && totiOameniiAzi.includes(valoare)) {
+      alert(`⚠️ ${valoare} este deja planificat la altă funcție azi!`);
+      return;
+    }
+
+    // 2. RESTRICȚIE: Nu 2 zile la rând
+    const ieriKey = format(addDays(parse(ziKey, 'dd.MM.yyyy', new Date()), -1), 'dd.MM.yyyy');
+    const maineKey = format(addDays(parse(ziKey, 'dd.MM.yyyy', new Date()), 1), 'dd.MM.yyyy');
+    
+    const oameniIeri = calendar[ieriKey]?.oameni || [];
+    const oameniMaine = calendar[maineKey]?.oameni || [];
+
+    if (valoare !== "Din altă subunitate" && (oameniiIeri.includes(valoare) || oameniMaine.includes(valoare))) {
+      alert(`⚠️ ${valoare} a fost/este planificat în ziua precedentă sau următoare!`);
+      return;
+    }
+
+    // 3. ACTUALIZARE STATUS AUTOMAT ÎN LISTĂ
+    // Dacă scoatem pe cineva, îl punem "Prezent la serviciu" (sau status anterior)
+    if (vechiulOmNume !== "Din altă subunitate") {
+      const omVechi = personal.find(p => p.numeComplet === vechiulOmNume);
+      if (omVechi) await updateDoc(doc(db, "echipa", omVechi.id), { [`status_${ziFiltru}`]: "Prezent la serviciu" });
+    }
+
+    // Dacă adăugăm pe cineva, îl punem "În serviciu"
+    if (valoare !== "Din altă subunitate") {
+      const omNou = personal.find(p => p.numeComplet === valoare);
+      if (omNou) await updateDoc(doc(db, "echipa", omNou.id), { [`status_${ziFiltru}`]: "În serviciu" });
+    }
+
+    nouCalendar[ziKey].oameni[index] = valoare;
+    await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
   };
 
-  const handleChange = async (zi, indexFunctie, numeNou) => {
-    let copieCalendar = { ...calendar };
-    if (!copieCalendar[zi]) {
-      copieCalendar[zi] = { oameni: new Array(functii.length).fill("Din altă subunitate"), mod: "2" };
-    }
-    copieCalendar[zi].oameni[indexFunctie] = numeNou;
-    await salveazaCalendar(copieCalendar);
-  };
-
-  const toggleMod = async (zi) => {
-    let copieCalendar = { ...calendar };
-    if (!copieCalendar[zi]) {
-        copieCalendar[zi] = { oameni: new Array(functii.length).fill("Din altă subunitate"), mod: "2" };
-    }
-    const noulMod = copieCalendar[zi].mod === "1" ? "2" : "1";
-    copieCalendar[zi].mod = noulMod;
-    if (noulMod === "1") {
-      copieCalendar[zi].oameni[6] = "Din altă subunitate"; 
-    }
-    await salveazaCalendar(copieCalendar);
-  };
-
-  if (incarcare) return <div className="p-10 text-center font-black text-white text-xl uppercase tracking-tighter">Se încarcă...</div>;
+  if (loading) return <div className="p-10 text-center opacity-50 text-white">Se încarcă...</div>;
 
   return (
-    <div className="space-y-6">
-      {zileDeAfisat.map(zi => {
-        const dateZi = calendar[zi] || { oameni: new Array(functii.length).fill("Din altă subunitate"), mod: "2" };
-        const azi = new Date().toLocaleDateString("ro-RO");
-        const ieri = new Date(Date.now() - 86400000).toLocaleDateString("ro-RO");
-
-        let borderCol = "border-slate-800";
-        let shadow = "";
-        if (zi === azi) { borderCol = "border-green-500"; shadow = "shadow-lg shadow-green-500/10"; }
-        else if (zi === ieri) { borderCol = "border-red-200"; }
+    <div className="space-y-10 pb-10">
+      {zileAfisate.map((zi) => {
+        const dateZi = calendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
+        const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
 
         return (
-          <div key={zi} className={`bg-slate-900 rounded-[2rem] border-2 ${borderCol} ${shadow} overflow-hidden`}>
-            
-            <div className="p-4 bg-black/40 border-b border-white/5 flex justify-between items-center">
-              <div>
-                <h3 className="text-lg font-black text-white uppercase leading-none">{getZileSaptamana(zi)}</h3>
-                <span className="text-slate-400 font-bold text-xs">{zi}</span>
-              </div>
-              
-              <button onClick={() => toggleMod(zi)} className="bg-slate-950 p-1 rounded-xl flex border border-white/10">
-                <div className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${dateZi.mod === '1' ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>
-                  <User size={14} strokeWidth={3} /> <span className="font-black text-[10px]">1P</span>
+          <div key={zi.key} className={`bg-slate-900/50 rounded-[2rem] border-2 ${esteAzi ? 'border-green-500 shadow-lg' : 'border-slate-800'}`}>
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center">
+              <h3 className="text-sm font-black uppercase text-white tracking-tighter">{zi.display}</h3>
+              {editabil && (
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  <button onClick={async () => {
+                    const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{}), mod: "1"};
+                    await setDoc(doc(db, "servicii", "calendar"), { data: nC });
+                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "1" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><User size={12}/></button>
+                  <button onClick={async () => {
+                    const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{}), mod: "2"};
+                    await setDoc(doc(db, "servicii", "calendar"), { data: nC });
+                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "2" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><Users size={12}/></button>
                 </div>
-                <div className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${dateZi.mod === '2' ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>
-                  <Users size={14} strokeWidth={3} /> <span className="font-black text-[10px]">2P</span>
-                </div>
-              </button>
+              )}
             </div>
-            
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-3">
               {functii.map((f, idx) => {
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
-                const numeCurent = dateZi.oameni[idx] || "Din altă subunitate";
-                const listaPermisa = ["Din altă subunitate", ...(reguliServicii[f] || [])];
-                const esteSubunitate = numeCurent === "Din altă subunitate";
+                const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
+                const listaEligibila = reguli[f] || [];
+                const oameniFiltrati = (listaEligibila.length > 0) ? personal.filter(p => listaEligibila.includes(p.numeComplet)) : personal;
 
                 return (
                   <div key={f} className="flex flex-col gap-1">
-                    <span className="text-[10px] font-black uppercase text-slate-500 px-1">{f}</span>
-                    <select 
-                      value={numeCurent}
-                      onChange={(e) => handleChange(zi, idx, e.target.value)}
-                      className={`w-full bg-black text-white p-4 rounded-xl border-2 text-sm font-black uppercase outline-none transition-all
-                        ${esteSubunitate ? 'border-slate-800 text-slate-600' : 'border-blue-500/50 text-white'}`}
-                    >
-                      {listaPermisa.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                    <span className="text-[9px] font-black text-slate-500 uppercase ml-1">{f}</span>
+                    {editabil ? (
+                      <select value={omPlanificat} onChange={(e) => handleSchimbare(zi.key, idx, e.target.value, zi.ziFiltru)}
+                        className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs font-bold text-white outline-none">
+                        <option value="Din altă subunitate">Din altă subunitate</option>
+                        {oameniFiltrati.map(p => <option key={p.id} value={p.numeComplet}>{p.numeComplet}</option>)}
+                      </select>
+                    ) : (
+                      <div className="bg-slate-950 p-3 rounded-xl border border-slate-800/50 flex justify-between items-center"><span className="text-xs font-black uppercase text-white">{omPlanificat}</span><Shield size={12} className="opacity-20" /></div>
+                    )}
                   </div>
                 );
               })}
@@ -142,5 +140,4 @@ const ServiciiPage = ({ editabil = true, ziSelectata = null }) => {
     </div>
   );
 };
-
 export default ServiciiPage;
