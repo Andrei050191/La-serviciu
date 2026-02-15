@@ -29,6 +29,7 @@ const ServiciiPage = ({ editabil }) => {
     }
   };
 
+  // --- LOGICA DE FORMATARE STRICTĂ ---
   const formatareNumeElement = (text) => {
     if (!text || text === "Din altă subunitate") return { grad: "", nume: text, complet: text };
     
@@ -53,14 +54,17 @@ const ServiciiPage = ({ editabil }) => {
     }).join(' ');
 
     const prenumeRaw = parti[indexStartNume] || "";
+    // Prima literă mare, restul mici
     const prenume = prenumeRaw.charAt(0).toUpperCase() + prenumeRaw.slice(1).toLowerCase();
+    
+    // Numele de familie tot cu MAJUSCULE
     const numeleFamilie = parti.slice(indexStartNume + 1).join(' ').toUpperCase();
 
-    const numeFormatat = `${prenume} ${numeleFamilie}`;
+    const numeAfisaj = `${prenume} ${numeleFamilie}`;
     return { 
       grad: gradul, 
-      nume: numeFormatat,
-      complet: `${gradul} ${numeFormatat}`
+      nume: numeAfisaj,
+      complet: `${gradul} ${numeAfisaj}`
     };
   };
 
@@ -90,7 +94,7 @@ const ServiciiPage = ({ editabil }) => {
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
   };
 
-  if (loading) return <div className="p-10 text-center text-white/50 font-black text-xl">SE ÎNCARCĂ...</div>;
+  if (loading) return <div className="p-10 text-center text-white/50 font-black text-2xl uppercase tracking-tighter">Se încarcă...</div>;
 
   const zileAfisate = [-1, 0, 1, 2, 3, 4, 5].map(offset => {
     const d = addDays(new Date(), offset);
@@ -98,18 +102,20 @@ const ServiciiPage = ({ editabil }) => {
   });
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-4 pb-20 px-2">
+    <div className="max-w-[1400px] mx-auto space-y-6 pb-20 px-2">
       {zileAfisate.map((zi) => {
         const dateZi = calendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
         const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
 
         return (
-          <div key={zi.key} className={`bg-[#0f172a] rounded-[1.5rem] border-2 transition-all ${esteAzi ? 'border-indigo-500 shadow-xl' : 'border-slate-800/40'}`}>
-            <div className="p-3 border-b border-slate-800/50 bg-black/20 rounded-t-[1.5rem]">
-              <h3 className="text-[12px] font-black uppercase text-indigo-400 tracking-wider">{zi.display}</h3>
+          <div key={zi.key} className={`bg-[#0f172a] rounded-[1.8rem] border-2 transition-all ${esteAzi ? 'border-indigo-500 shadow-2xl scale-[1.01]' : 'border-slate-800/60'}`}>
+            <div className="p-4 border-b border-slate-800/50 bg-black/30 rounded-t-[1.8rem] flex justify-center text-center">
+              <h3 className="text-[18px] font-black uppercase text-white tracking-widest">
+                {zi.display}
+              </h3>
             </div>
 
-            <div className="p-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="p-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {functii.map((f, idx) => {
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
                 const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
@@ -120,29 +126,30 @@ const ServiciiPage = ({ editabil }) => {
                   <div key={f} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 ml-1">
                       {getIcon(f, 14)}
-                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight">{f}</label>
+                      <label className="text-[12px] font-bold text-indigo-400/70 uppercase tracking-tight">{f}</label>
                     </div>
 
                     <div className="relative">
-                      {/* CARD VIZUAL - TEXT MULT MAI MARE */}
-                      <div className="w-full bg-[#020617] border border-slate-800/60 rounded-xl px-4 py-3 flex justify-between items-center min-h-[70px]">
+                      <div className="w-full bg-[#020617] border border-slate-800/80 rounded-xl px-4 py-4 flex justify-between items-center min-h-[80px]">
                         <div className="text-left overflow-hidden">
-                          <p className="text-[11px] font-bold text-indigo-400/90 leading-none mb-1.5 uppercase tracking-wide">{info.grad}</p>
-                          <p className="text-[20px] font-black text-white tracking-tighter truncate leading-tight">{info.nume}</p>
+                          <p className="text-[12px] font-semibold text-slate-400 leading-none mb-2">{info.grad}</p>
+                          {/* AICI AM SCOS CLASA UPPERCASE PENTRU A RESPECTA REGULA NUME-PRENUME */}
+                          <p className="text-[20px] font-black text-white tracking-tighter truncate leading-none">
+                            {info.nume}
+                          </p>
                         </div>
                         <div className="shrink-0 ml-2 opacity-50">
-                          {getIcon(f, 22)}
+                          {getIcon(f, 24)}
                         </div>
                       </div>
 
-                      {/* POP-UP NATIV - OPTIMIZAT PENTRU CITIRE UȘOARĂ */}
                       {editabil && (
                         <select 
                           value={omPlanificat} 
                           onChange={(e) => handleSchimbare(zi.key, idx, e.target.value)}
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                         >
-                          <option value="Din altă subunitate">-- DIN ALTĂ SUBUNITATE --</option>
+                          <option value="Din altă subunitate">DIN ALTĂ SUBUNITATE</option>
                           {filtrati.map(p => {
                             const opt = formatareNumeElement(p.numeComplet);
                             return (
