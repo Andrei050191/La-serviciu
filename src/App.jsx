@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, getDoc 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -26,16 +26,14 @@ const statusConfig = {
 
 function App() {
   const [echipa, setEchipa] = useState([]);
+  const [serviciiPlan, setServiciiPlan] = useState({});
   const [paginaCurenta, setPaginaCurenta] = useState('login');
   const [ziSelectata, setZiSelectata] = useState(0); 
   const [userLogat, setUserLogat] = useState(null);
   const [inputCod, setInputCod] = useState("");
-  const [eroareLogin, setEroareLogin] = useState(false);
-  const [membruEditat, setMembruEditat] = useState(null);
   const [indicatii, setIndicatii] = useState("");
   const [editIndicatii, setEditIndicatii] = useState(false);
   const [mesajNou, setMesajNou] = useState(false);
-  
   const [showConcediuSelect, setShowConcediuSelect] = useState(false);
   const [numarZileConcediu, setNumarZileConcediu] = useState(1);
 
@@ -47,112 +45,76 @@ function App() {
 
   const ziKey = optiuniZile[ziSelectata].key;
 
-  const formatIdentitate = (m) => {
-    if (!m) return null;
-    return (
-      <div className="flex flex-col text-left">
-        <span className="text-[10px] font-medium text-white/70 leading-none mb-1 uppercase">{m.grad || ""}</span>
-        <span className="text-sm font-black text-white uppercase">{m.prenume || ""} {m.nume || ""}</span>
-      </div>
-    );
-  };
-
   useEffect(() => {
-    const sesiuneSalvata = localStorage.getItem('userEfectiv');
-    if (sesiuneSalvata) {
-      const user = JSON.parse(sesiuneSalvata);
-      setUserLogat(user);
-      setPaginaCurenta(user.rol === 'admin' ? 'categorii' : 'personal');
+    const sesiune = localStorage.getItem('userEfectiv');
+    if (sesiune) {
+      const u = JSON.parse(sesiune);
+      setUserLogat(u);
+      setPaginaCurenta(u.rol === 'admin' ? 'categorii' : 'personal');
     }
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setEchipa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsubEchipa = onSnapshot(query(collection(db, "echipa"), orderBy("ordine", "asc")), (s) => {
+      setEchipa(s.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    return () => unsubscribe();
+    const unsubServicii = onSnapshot(doc(db, "planificare", "servicii"), (d) => {
+      if (d.exists()) setServiciiPlan(d.data());
+    });
+    const unsubInd = onSnapshot(doc(db, "setari", "indicatii"), (d) => {
+      if (d.exists()) { setIndicatii(d.data().text); setMesajNou(true); setTimeout(() => setMesajNou(false), 8000); }
+    });
+    return () => { unsubEchipa(); unsubServicii(); unsubInd(); };
   }, []);
 
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, "setari", "indicatii"), (docSnap) => {
-      if (docSnap.exists()) { 
-        setIndicatii(docSnap.data().text); 
-        setMesajNou(true); 
-        setTimeout(() => setMesajNou(false), 8000); 
-      }
-    });
-    return () => unsub();
-  }, []);
+  // --- LOGICA STATUS & MASĂ ---
+  const getStatusReal = (mId) => {
+    const m = echipa.find(e => e.id === mId);
+    if (!m) return "Nespecificat";
+    const manual = m[`status_${ziKey}`];
+    const plan = serviciiPlan[ziKey] || {};
+    const esteInPlan = plan.responsabil === mId || (plan.interventie && plan.interventie.includes(mId));
+
+    if (manual === "Concediu" || manual === "Foaie de boala") return manual;
+    if (esteInPlan) return "În serviciu";
+    return manual || "Nespecificat";
+  };
+
+  const poateMancaLaCantina = (mId) => {
+    const st = getStatusReal(mId);
+    // DOAR: Prezent la serviciu, Responsabil (În serviciu) sau Intervenție (În serviciu)
+    return st === "Prezent la serviciu" || st === "În serviciu";
+  };
 
   const login = (cod) => {
     if (cod === "0000") {
-      const admin = { rol: 'admin', nume: 'Administrator' }; setUserLogat(admin);
-      localStorage.setItem('userEfectiv', JSON.stringify(admin)); setPaginaCurenta('categorii'); return;
+      const a = { rol: 'admin', nume: 'Administrator' }; setUserLogat(a);
+      localStorage.setItem('userEfectiv', JSON.stringify(a)); setPaginaCurenta('categorii'); return;
     }
-    const gasit = echipa.find(m => String(m.cod) === String(cod));
-    if (gasit) {
-      const u = { ...gasit, rol: 'user' }; setUserLogat(u);
+    const g = echipa.find(m => String(m.cod) === String(cod));
+    if (g) {
+      const u = { ...g, rol: 'user' }; setUserLogat(u);
       localStorage.setItem('userEfectiv', JSON.stringify(u)); setPaginaCurenta('personal');
-    } else { setEroareLogin(true); setInputCod(""); }
+    }
   };
 
   const logout = () => { localStorage.removeItem('userEfectiv'); setUserLogat(null); setPaginaCurenta('login'); };
 
-  const schimbaStatus = async (id, nouStatus) => {
-    const ziKeyFiltru = optiuniZile[ziSelectata].key;
-    const membru = echipa.find(m => m.id === id);
-    const statusCurent = getStatusMembru(membru);
-
-    if (statusCurent === "În serviciu" || statusCurent === "După serviciu") return;
-
-    const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
-    if (nouStatus !== "Prezent la serviciu") {
-      updateObj[`cantina_${ziKeyFiltru}`] = false;
-    }
-
-    await updateDoc(doc(db, "echipa", id), updateObj);
-    setMembruEditat(null);
-  };
-
-  const aplicaConcediuLung = async () => {
-    const updates = {};
-    for (let i = 0; i < numarZileConcediu; i++) {
-      const dataViitoare = addDays(new Date(), i);
-      const key = format(dataViitoare, 'yyyyMMdd');
-      updates[`status_${key}`] = "Concediu";
-      updates[`cantina_${key}`] = false;
-    }
-    await updateDoc(doc(db, "echipa", userLogat.id), updates);
-    setShowConcediuSelect(false);
-  };
-
-  const toggleCantina = async (id, stare) => {
-    await updateDoc(doc(db, "echipa", id), { [`cantina_${ziKey}`]: !stare });
-  };
-
-  const getStatusMembru = (m) => {
-    const realTimeMembru = echipa.find(e => e.id === m.id);
-    if (!realTimeMembru) return "Nespecificat";
-    // Dacă membrul are un status manual setat (precum În serviciu sau După serviciu), acesta are prioritate
-    return realTimeMembru[`status_${ziKey}`] || "Nespecificat";
-  };
-
-  const nrLaCantina = echipa.filter(m => m[`cantina_${ziKey}`] === true).length;
-
-  const categorii = Object.keys(statusConfig).reduce((acc, status) => {
-    acc[status] = echipa.filter(m => getStatusMembru(m) === status);
-    return acc;
-  }, {});
+  const formatIdentitate = (m) => (
+    <div className="flex flex-col text-left">
+      <span className="text-[10px] font-medium text-white/70 uppercase mb-1">{m?.grad || ""}</span>
+      <span className="text-sm font-black text-white uppercase">{m?.prenume || ""} {m?.nume || ""}</span>
+    </div>
+  );
 
   if (paginaCurenta === 'login') {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white">
-        <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 w-full max-w-sm text-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center">
+        <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 w-full max-w-sm shadow-2xl">
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><Lock size={32} /></div>
           <h1 className="text-2xl font-black uppercase mb-8 tracking-tighter">Acces Sistem</h1>
-          <input type="password" maxLength="4" value={inputCod} onChange={(e) => setInputCod(e.target.value)}
-            className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-4xl tracking-[0.5em] focus:border-blue-500 outline-none mb-4 text-white" placeholder="****" />
+          <input type="password" value={inputCod} onChange={(e) => setInputCod(e.target.value)}
+            className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-4xl mb-4" placeholder="****" />
           <button onClick={() => login(inputCod)} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase">Intră</button>
         </div>
       </div>
@@ -163,14 +125,16 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-white p-4">
       <div className="max-w-4xl mx-auto">
         
-        <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800 shadow-xl">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
-            <div>{userLogat?.rol === 'admin' ? <h1 className="text-lg font-black uppercase">Admin</h1> : formatIdentitate(userLogat)}</div>
+            <div>{userLogat?.rol === 'admin' ? <h1 className="text-lg font-black uppercase tracking-tighter">Panou Admin</h1> : formatIdentitate(userLogat)}</div>
           </div>
-          <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl"><LogOut size={24}/></button>
+          <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"><LogOut size={24}/></button>
         </div>
 
+        {/* Calendar Zile */}
         <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
           {optiuniZile.map((zi, index) => (
             <button key={zi.key} onClick={() => setZiSelectata(index)} 
@@ -181,195 +145,123 @@ function App() {
           ))}
         </div>
 
-        <div className="space-y-3 mb-8">
-          <div className={`p-5 rounded-[2rem] border-2 transition-all ${mesajNou ? 'border-red-500 bg-red-950/30' : 'border-slate-800 bg-slate-900'}`}>
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Indicații Comandant</span>
-              {userLogat?.rol === 'admin' && (
-                <button onClick={async () => { if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
-                  className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">{editIndicatii ? 'Gata' : 'Modifică'}</button>
-              )}
-            </div>
-            {!editIndicatii ? (
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p></div>
-            ) : (
-              <textarea className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[120px]"
-                value={indicatii} onChange={(e) => setIndicatii(e.target.value)} autoFocus />
-            )}
-          </div>
-
-          {userLogat?.rol === 'user' && (
-            <button onClick={() => setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii')} 
-              className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl">
-              <div className="flex items-center gap-4">
-                <div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div>
-                <div className="text-left"><p className="font-black text-xs uppercase tracking-widest">Planificare Servicii</p></div>
-              </div>
-              <ExternalLink size={20} className="text-blue-500 opacity-50" />
-            </button>
-          )}
-        </div>
-
-        {paginaCurenta === 'servicii' ? (
-           <ServiciiPage editabil={true} />
-        ) : userLogat?.rol === 'admin' ? (
+        {userLogat?.rol === 'admin' ? (
           <div className="space-y-6">
+            {/* MENIU ADMIN REPARAT */}
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
-              {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
-                <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
-                  {p.replace('config_', '').replace('categorii', 'sumar').replace('cantina', 'masă')}
+              {[
+                { id: 'categorii', label: 'SUMAR' },
+                { id: 'cantina', label: 'MASĂ' },
+                { id: 'lista', label: 'LISTA' },
+                { id: 'servicii', label: 'PLANIFICARE' },
+                { id: 'config_servicii', label: 'CONFIGURARE' }
+              ].map((p) => (
+                <button key={p.id} onClick={() => setPaginaCurenta(p.id)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap transition-all ${paginaCurenta === p.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                  {p.label}
                 </button>
               ))}
             </div>
 
-            {paginaCurenta === 'lista' && (
-              <div className="grid grid-cols-1 gap-3">
-                {echipa.map(m => {
-                  const status = getStatusMembru(m);
-                  const isEditing = membruEditat === m.id;
-                  const esteBlocat = status === "În serviciu" || status === "După serviciu";
+            {paginaCurenta === 'categorii' && (
+              <div className="grid grid-cols-1 gap-4">
+                {Object.keys(statusConfig).map(st => {
+                  const oameni = echipa.filter(m => getStatusReal(m.id) === st);
                   return (
-                    <div key={m.id} className="flex flex-col gap-1">
-                      <button disabled={esteBlocat} onClick={() => setMembruEditat(isEditing ? null : m.id)}
-                        className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'} ${esteBlocat ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        {formatIdentitate(m)}
-                        <div className="flex items-center gap-2">
-                           {esteBlocat && <Lock size={12} className="text-slate-400" />}
-                           <span className={`text-[9px] font-black px-3 py-2 rounded-lg text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>{status}</span>
-                        </div>
-                      </button>
-                      {isEditing && (
-                        <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl">
-                          {Object.keys(statusConfig).map(st => (
-                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800">{statusConfig[st].icon} {st}</button>
-                          ))}
-                        </div>
-                      )}
+                    <div key={st} className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-md">
+                      <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2"><div className={`p-2 rounded-lg ${statusConfig[st].color}`}>{statusConfig[st].icon}</div><span className="font-black uppercase text-xs">{st}</span></div>
+                        <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black">{oameni.length}</span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {oameni.map(o => (
+                          <div key={o.id} className="bg-slate-950 p-3 rounded-xl border border-white/5 flex justify-between items-center text-[10px] font-black uppercase">
+                            <span>{o.grad} {o.prenume} {o.nume}</span>
+                            {o[`cantina_${ziKey}`] && <Utensils size={14} className="text-orange-500" />}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                 })}
               </div>
             )}
-            
-            {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
-            
+
             {paginaCurenta === 'cantina' && (
               <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
-                 <h2 className="text-lg font-black uppercase text-orange-500 mb-6 text-center">Masa la cantină ({nrLaCantina})</h2>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                   {echipa.map(m => {
-                     const status = getStatusMembru(m);
-                     // Modificat: Cei în serviciu/după/prezent pot mânca
-                     const poateManca = status === "Prezent la serviciu" || status === "În serviciu" || status === "După serviciu";
-                     return (
-                       <button key={m.id} disabled={!poateManca} onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} 
-                         className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all 
-                           ${!poateManca ? 'opacity-20 bg-slate-950 border-transparent cursor-not-allowed' : 
-                             m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800'}`}>
-                         <div className="text-left">
-                            {formatIdentitate(m)}
-                         </div>
-                         {poateManca && (m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>)}
-                       </button>
-                     );
-                   })}
-                 </div>
+                <h2 className="text-center font-black uppercase text-orange-500 mb-6 tracking-widest">Administrare Masă Cantină</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {echipa.map(m => {
+                    const ok = poateMancaLaCantina(m.id);
+                    const mananca = m[`cantina_${ziKey}`];
+                    return (
+                      <button key={m.id} disabled={!ok} onClick={() => updateDoc(doc(db, "echipa", m.id), { [`cantina_${ziKey}`]: !mananca })} 
+                        className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all ${!ok ? 'opacity-20 bg-slate-950 grayscale cursor-not-allowed' : mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
+                        {formatIdentitate(m)}
+                        {ok && (mananca ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>)}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            {paginaCurenta === 'categorii' && (
-              <div className="grid grid-cols-1 gap-4">
-                {Object.entries(categorii).map(([numeCat, oameni]) => (
-                  <div key={numeCat} className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800">
-                    <div className="flex justify-between items-center mb-4 font-black uppercase text-sm">
-                      <div className="flex items-center gap-2"><div className={`p-2 rounded-lg ${statusConfig[numeCat]?.color}`}>{statusConfig[numeCat]?.icon}</div>{numeCat}</div>
-                      <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black">{oameni.length}</span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2">{oameni.map(o => <div key={o.id} className="bg-slate-950 p-3 rounded-xl border border-white/5">{formatIdentitate(o)}</div>)}</div>
+            {paginaCurenta === 'lista' && (
+              <div className="grid grid-cols-1 gap-3">
+                {echipa.map(m => (
+                  <div key={m.id} className="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-md">
+                    {formatIdentitate(m)}
+                    <span className={`text-[9px] font-black px-3 py-2 rounded-lg text-white ${statusConfig[getStatusReal(m.id)]?.color || 'bg-slate-800'}`}>{getStatusReal(m.id)}</span>
                   </div>
                 ))}
               </div>
             )}
+            {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
+            {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Status User */}
             <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-              <h2 className="text-center text-xs font-black uppercase text-blue-400 mb-6 tracking-widest">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
+              <h2 className="text-center text-[10px] font-black uppercase text-blue-400 mb-6 tracking-widest">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
               <div className="grid grid-cols-1 gap-3">
                 {Object.keys(statusConfig).map(st => {
-                  const statusCurent = getStatusMembru(userLogat);
-                  const activ = statusCurent === st;
-                  const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu";
-                  
-                  if (st === "Concediu") {
-                    return (
-                      <div key={st} className="flex flex-col gap-2">
-                        <button disabled={esteBlocat} onClick={() => setShowConcediuSelect(!showConcediuSelect)} 
-                          className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
-                            ${activ ? 'bg-purple-600 text-white border-purple-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
-                            ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
-                          <div className={`p-2 rounded-lg ${activ ? 'bg-white text-purple-600' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                          <span className="text-sm uppercase font-black text-left">{st}</span>
-                          <div className="ml-auto flex items-center gap-2">
-                            {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
-                            {esteBlocat && <Lock size={20} />}
-                            {!esteBlocat && (showConcediuSelect ? <ChevronUp size={20}/> : <ChevronDown size={20}/>)}
-                          </div>
-                        </button>
-                        {showConcediuSelect && !esteBlocat && (
-                          <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem]">
-                             <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Zile Concediu</p>
-                             <div className="flex items-center justify-between mb-6">
-                               <button onClick={() => setNumarZileConcediu(Math.max(1, numarZileConcediu - 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
-                               <span className="text-4xl font-black">{numarZileConcediu}</span>
-                               <button onClick={() => setNumarZileConcediu(Math.min(45, numarZileConcediu + 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
-                             </div>
-                             <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm">Aplică Concediul</button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
+                  const currentSt = getStatusReal(userLogat.id);
+                  const activ = currentSt === st;
+                  const esteBlocatInServiciu = (currentSt === "În serviciu" || currentSt === "După serviciu") && st !== currentSt;
                   return (
-                    <button key={st} disabled={esteBlocat} onClick={() => schimbaStatus(userLogat.id, st)} 
-                      className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
-                        ${activ ? 'bg-white text-black border-white shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
-                        ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
+                    <button key={st} disabled={esteBlocatInServiciu} onClick={() => updateDoc(doc(db, "echipa", userLogat.id), { [`status_${ziKey}`]: st })} 
+                      className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${activ ? 'bg-white text-black border-white shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'} ${esteBlocatInServiciu ? 'opacity-30' : ''}`}>
                       <div className={`p-2 rounded-lg ${activ ? 'bg-black text-white' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                      <div className="flex flex-col text-left">
-                        <span className="text-sm uppercase font-black">{st}</span>
-                        {esteBlocat && activ && <span className="text-[9px] font-bold text-red-600 uppercase">Serviciu Activ</span>}
-                      </div>
-                      {activ && (esteBlocat ? <Lock size={20} className="ml-auto" /> : <Check size={24} className="ml-auto" strokeWidth={4} />)}
+                      <span className="text-sm uppercase font-black">{st}</span>
+                      {activ && (esteBlocatInServiciu ? <Lock size={20} className="ml-auto" /> : <Check size={24} className="ml-auto" strokeWidth={4} />)}
                     </button>
                   );
                 })}
               </div>
             </div>
 
+            {/* Buton Masă User */}
             <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-              <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină ({nrLaCantina})</h2>
+              <h2 className="text-center text-[10px] font-black uppercase text-orange-500 mb-6 tracking-widest">Masă la Cantină</h2>
               {(() => {
-                const realTimeSelf = echipa.find(e => e.id === userLogat.id);
-                const status = getStatusMembru(userLogat);
-                const mananca = realTimeSelf ? realTimeSelf[`cantina_${ziKey}`] : false;
-                // Modificat: Permite masa și pentru cei care sunt de serviciu/după serviciu
-                const poateManca = status === "Prezent la serviciu" || status === "În serviciu" || status === "După serviciu";
+                const me = echipa.find(e => e.id === userLogat.id);
+                const ok = poateMancaLaCantina(userLogat.id);
+                const mananca = me?.[`cantina_${ziKey}`];
                 return (
-                  <button onClick={() => poateManca && toggleCantina(userLogat.id, mananca)} disabled={!poateManca}
-                    className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all 
-                      ${!poateManca ? 'bg-red-950/20 border-red-900/50 opacity-50 cursor-not-allowed' : 
-                        mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
-                    <div className="flex items-center gap-4">
-                      <Utensils size={24} />
-                      <span className="text-sm uppercase font-black">{mananca ? "LA CANTINĂ" : "ACASĂ"}</span>
-                    </div>
+                  <button onClick={() => updateDoc(doc(db, "echipa", userLogat.id), { [`cantina_${ziKey}`]: !mananca })} disabled={!ok}
+                    className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all ${!ok ? 'bg-red-950/10 opacity-30 cursor-not-allowed border-transparent' : mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
+                    <div className="flex items-center gap-4"><Utensils size={24} /><span className="text-sm uppercase font-black">{mananca ? "LA CANTINĂ" : "ACASĂ"}</span></div>
                     {mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
                   </button>
                 );
               })()}
             </div>
+            
+            <button onClick={() => setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii')} className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl">
+              <div className="flex items-center gap-4"><div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div><span className="font-black text-xs uppercase tracking-widest">Vezi Planificarea</span></div>
+              <ExternalLink size={20} className="text-blue-500 opacity-50" />
+            </button>
+            {paginaCurenta === 'servicii' && <div className="mt-4"><ServiciiPage editabil={false} /></div>}
           </div>
         )}
       </div>
