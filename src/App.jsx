@@ -26,7 +26,7 @@ const statusConfig = {
 
 function App() {
   const [echipa, setEchipa] = useState([]);
-  const [serviciiPlan, setServiciiPlan] = useState({}); // Adăugat pentru reguli
+  const [serviciiPlan, setServiciiPlan] = useState({});
   const [paginaCurenta, setPaginaCurenta] = useState('login');
   const [ziSelectata, setZiSelectata] = useState(0); 
   const [userLogat, setUserLogat] = useState(null);
@@ -48,7 +48,6 @@ function App() {
 
   const ziKey = optiuniZile[ziSelectata].key;
 
-  // --- LOGICA DE MONITORIZARE PLANIFICARE ---
   useEffect(() => {
     const unsubServicii = onSnapshot(doc(db, "planificare", "servicii"), (d) => {
       if (d.exists()) setServiciiPlan(d.data());
@@ -112,14 +111,11 @@ function App() {
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
     const membru = echipa.find(m => m.id === id);
     const statusCurent = getStatusMembru(membru);
-
     if (statusCurent === "În serviciu" || statusCurent === "După serviciu") return;
-
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
     if (nouStatus !== "Prezent la serviciu") {
       updateObj[`cantina_${ziKeyFiltru}`] = false;
     }
-
     await updateDoc(doc(db, "echipa", id), updateObj);
     setMembruEditat(null);
   };
@@ -140,35 +136,24 @@ function App() {
     await updateDoc(doc(db, "echipa", id), { [`cantina_${ziKey}`]: !stare });
   };
 
-  // --- LOGICA REPARATA STATUS ---
   const getStatusMembru = (m) => {
     const realTimeMembru = echipa.find(e => e.id === m.id);
     if (!realTimeMembru) return "Nespecificat";
-    
     const manual = realTimeMembru[`status_${ziKey}`];
     const plan = serviciiPlan[ziKey] || {};
-    
-    // Regula: Responsabil sau Interventie = În serviciu automat
     const esteInPlan = plan.responsabil === m.id || (plan.interventie && plan.interventie.includes(m.id));
-
     if (manual === "Concediu" || manual === "Foaie de boala") return manual;
     if (esteInPlan) return "În serviciu";
-    
     return manual || "Nespecificat";
   };
 
-  // --- LOGICA REPARATA MASA ---
   const poateMancaLaCantina = (mId) => {
     const m = echipa.find(e => e.id === mId);
     if (!m) return false;
-    
     const status = getStatusMembru(m);
     const plan = serviciiPlan[ziKey] || {};
-    
-    // Regula: Permis daca e Prezent la serviciu SAU daca e in plan (Responsabil/Interventie)
     const esteInPlan = plan.responsabil === mId || (plan.interventie && plan.interventie.includes(mId));
-    
-    return status === "Prezent la serviciu" || esteInPlan || status === "După serviciu";
+    return status === "Prezent la serviciu" || esteInPlan;
   };
 
   const nrLaCantina = echipa.filter(m => m[`cantina_${ziKey}`] === true).length;
@@ -243,18 +228,19 @@ function App() {
           )}
         </div>
 
-        {paginaCurenta === 'servicii' ? (
-           <ServiciiPage editabil={userLogat?.rol === 'admin'} />
-        ) : userLogat?.rol === 'admin' ? (
+        {userLogat?.rol === 'admin' ? (
           <div className="space-y-6">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
               {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
                 <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
-                  {p.replace('config_', '').replace('categorii', 'sumar').replace('cantina', 'masă')}
+                  {p === 'config_servicii' ? 'EFECTIV' : p.replace('categorii', 'sumar').replace('cantina', 'masă')}
                 </button>
               ))}
             </div>
 
+            {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
+            {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
+            
             {paginaCurenta === 'lista' && (
               <div className="grid grid-cols-1 gap-3">
                 {echipa.map(m => {
@@ -284,8 +270,6 @@ function App() {
               </div>
             )}
             
-            {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
-            
             {paginaCurenta === 'cantina' && (
               <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
                  <h2 className="text-lg font-black uppercase text-orange-500 mb-6 text-center">Masa la cantină ({nrLaCantina})</h2>
@@ -297,9 +281,7 @@ function App() {
                          className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all 
                            ${!poateManca ? 'opacity-20 bg-slate-950 border-transparent cursor-not-allowed grayscale' : 
                              m[`cantina_${ziKey}`] ? 'bg-orange-600 border-orange-400' : 'bg-slate-950 border-slate-800'}`}>
-                         <div className="text-left">
-                            {formatIdentitate(m)}
-                         </div>
+                         <div className="text-left">{formatIdentitate(m)}</div>
                          {poateManca && (m[`cantina_${ziKey}`] ? <Check size={18} strokeWidth={4}/> : <div className="w-5 h-5 border-2 border-slate-800 rounded-full"/>)}
                        </button>
                      );
@@ -324,82 +306,96 @@ function App() {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-              <h2 className="text-center text-xs font-black uppercase text-blue-400 mb-6 tracking-widest">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
-              <div className="grid grid-cols-1 gap-3">
-                {Object.keys(statusConfig).map(st => {
-                  const statusCurent = getStatusMembru(userLogat);
-                  const activ = statusCurent === st;
-                  const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu";
-                  
-                  if (st === "Concediu") {
-                    return (
-                      <div key={st} className="flex flex-col gap-2">
-                        <button disabled={esteBlocat} onClick={() => setShowConcediuSelect(!showConcediuSelect)} 
-                          className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
-                            ${activ ? 'bg-purple-600 text-white border-purple-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
-                            ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
-                          <div className={`p-2 rounded-lg ${activ ? 'bg-white text-purple-600' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                          <span className="text-sm uppercase font-black text-left">{st}</span>
-                          <div className="ml-auto flex items-center gap-2">
-                            {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
-                            {esteBlocat && <Lock size={20} />}
-                            {!esteBlocat && (showConcediuSelect ? <ChevronUp size={20}/> : <ChevronDown size={20}/>)}
-                          </div>
-                        </button>
-                        {showConcediuSelect && !esteBlocat && (
-                          <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem]">
-                             <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Zile Concediu</p>
-                             <div className="flex items-center justify-between mb-6">
-                               <button onClick={() => setNumarZileConcediu(Math.max(1, numarZileConcediu - 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
-                               <span className="text-4xl font-black">{numarZileConcediu}</span>
-                               <button onClick={() => setNumarZileConcediu(Math.min(45, numarZileConcediu + 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
-                             </div>
-                             <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm">Aplică Concediul</button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <button key={st} disabled={esteBlocat} onClick={() => schimbaStatus(userLogat.id, st)} 
-                      className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
-                        ${activ ? 'bg-white text-black border-white shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
-                        ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
-                      <div className={`p-2 rounded-lg ${activ ? 'bg-black text-white' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                      <div className="flex flex-col text-left">
-                        <span className="text-sm uppercase font-black">{st}</span>
-                        {esteBlocat && activ && <span className="text-[9px] font-bold text-red-600 uppercase">Serviciu Activ</span>}
-                      </div>
-                      {activ && (esteBlocat ? <Lock size={20} className="ml-auto" /> : <Check size={24} className="ml-auto" strokeWidth={4} />)}
-                    </button>
-                  );
-                })}
+            {paginaCurenta === 'servicii' ? (
+              <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
+                 <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xs font-black uppercase text-blue-400 tracking-widest">Editare Planificare</h2>
+                    <button onClick={() => setPaginaCurenta('personal')} className="text-[10px] font-black bg-slate-800 px-4 py-2 rounded-xl italic">Înapoi</button>
+                 </div>
+                 <ServiciiPage editabil={true} />
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
+                  <h2 className="text-center text-xs font-black uppercase text-blue-400 mb-6 tracking-widest">Unde te afli {optiuniZile[ziSelectata].label}?</h2>
+                  <div className="grid grid-cols-1 gap-3">
+                    {Object.keys(statusConfig).map(st => {
+                      const statusCurent = getStatusMembru(userLogat);
+                      const activ = statusCurent === st;
+                      // MODIFICARE: Blocăm interacțiunea dacă e status de serviciu sau dacă statusul butonului este serviciu
+                      const esteStatusDeServiciu = st === "În serviciu" || st === "După serviciu";
+                      const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu" || esteStatusDeServiciu;
+                      
+                      if (st === "Concediu") {
+                        return (
+                          <div key={st} className="flex flex-col gap-2">
+                            <button disabled={esteBlocat} onClick={() => setShowConcediuSelect(!showConcediuSelect)} 
+                              className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
+                                ${activ ? 'bg-purple-600 text-white border-purple-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
+                                ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
+                              <div className={`p-2 rounded-lg ${activ ? 'bg-white text-purple-600' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
+                              <span className="text-sm uppercase font-black text-left">{st}</span>
+                              <div className="ml-auto flex items-center gap-2">
+                                {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
+                                {esteBlocat && <Lock size={20} />}
+                                {!esteBlocat && (showConcediuSelect ? <ChevronUp size={20}/> : <ChevronDown size={20}/>)}
+                              </div>
+                            </button>
+                            {showConcediuSelect && !esteBlocat && (
+                              <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem]">
+                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Zile Concediu</p>
+                                 <div className="flex items-center justify-between mb-6">
+                                   <button onClick={() => setNumarZileConcediu(Math.max(1, numarZileConcediu - 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
+                                   <span className="text-4xl font-black">{numarZileConcediu}</span>
+                                   <button onClick={() => setNumarZileConcediu(Math.min(45, numarZileConcediu + 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
+                                 </div>
+                                 <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm">Aplică Concediul</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
 
-            <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-              <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină ({nrLaCantina})</h2>
-              {(() => {
-                const realTimeSelf = echipa.find(e => e.id === userLogat.id);
-                const poateManca = poateMancaLaCantina(userLogat.id);
-                const mananca = realTimeSelf ? realTimeSelf[`cantina_${ziKey}`] : false;
-                
-                return (
-                  <button onClick={() => poateManca && toggleCantina(userLogat.id, mananca)} disabled={!poateManca}
-                    className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all 
-                      ${!poateManca ? 'bg-red-950/20 border-red-900/50 opacity-50 cursor-not-allowed' : 
-                        mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
-                    <div className="flex items-center gap-4">
-                      <Utensils size={24} />
-                      <span className="text-sm uppercase font-black">{mananca ? "LA CANTINĂ" : "ACASĂ"}</span>
-                    </div>
-                    {mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
-                  </button>
-                );
-              })()}
-            </div>
+                      return (
+                        <button key={st} disabled={esteBlocat} onClick={() => schimbaStatus(userLogat.id, st)} 
+                          className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
+                            ${activ ? 'bg-white text-black border-white shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
+                            ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
+                          <div className={`p-2 rounded-lg ${activ ? 'bg-black text-white' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
+                          <div className="flex flex-col text-left">
+                            <span className="text-sm uppercase font-black">{st}</span>
+                            {esteBlocat && activ && <span className="text-[9px] font-bold text-red-600 uppercase">Status Automat</span>}
+                          </div>
+                          {activ && (esteBlocat ? <Lock size={20} className="ml-auto" /> : <Check size={24} className="ml-auto" strokeWidth={4} />)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
+                  <h2 className="text-center text-xs font-black uppercase text-orange-500 mb-6 tracking-widest">Masa la cantină ({nrLaCantina})</h2>
+                  {(() => {
+                    const realTimeSelf = echipa.find(e => e.id === userLogat.id);
+                    const poateManca = poateMancaLaCantina(userLogat.id);
+                    const mananca = realTimeSelf ? realTimeSelf[`cantina_${ziKey}`] : false;
+                    
+                    return (
+                      <button onClick={() => poateManca && toggleCantina(userLogat.id, mananca)} disabled={!poateManca}
+                        className={`w-full flex justify-between items-center p-6 rounded-2xl border-2 transition-all 
+                          ${!poateManca ? 'bg-red-950/20 border-red-900/50 opacity-50 cursor-not-allowed' : 
+                            mananca ? 'bg-orange-600 border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800'}`}>
+                        <div className="flex items-center gap-4">
+                          <Utensils size={24} />
+                          <span className="text-sm uppercase font-black">{mananca ? "LA CANTINĂ" : "ACASĂ"}</span>
+                        </div>
+                        {mananca ? <Check size={24} strokeWidth={4}/> : <X size={24} className="text-red-500" strokeWidth={4}/>}
+                      </button>
+                    );
+                  })()}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
