@@ -81,8 +81,8 @@ function App() {
   };
 
   useEffect(() => {
-    const unsubServicii = onSnapshot(doc(db, "planificare", "servicii"), (d) => {
-      if (d.exists()) setServiciiPlan(d.data());
+    const unsubServicii = onSnapshot(doc(db, "servicii", "calendar"), (d) => {
+      if (d.exists()) setServiciiPlan(d.data().data || {});
     });
     return () => unsubServicii();
   }, []);
@@ -127,7 +127,7 @@ function App() {
       const u = { ...gasit, rol: 'user' }; setUserLogat(u);
       localStorage.setItem('userEfectiv', JSON.stringify(u)); setPaginaCurenta('personal');
     } else { 
-      vibreaza([50, 50, 50]); // Vibrație de eroare
+      vibreaza([50, 50, 50]); 
       setEroareLogin(true); setInputCod(""); 
     }
   };
@@ -139,7 +139,12 @@ function App() {
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
     const membru = echipa.find(m => m.id === id);
     const statusCurent = getStatusMembru(membru);
-    if (statusCurent === "În serviciu" || statusCurent === "După serviciu") return;
+    
+    const plan = serviciiPlan[optiuniZile[ziSelectata].label === "Azi" || optiuniZile[ziSelectata].label === "Mâine" ? format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy') : ""]?.oameni || [];
+    const esteExceptie = plan.includes(membru?.numeComplet) && (plan.indexOf(membru?.numeComplet) >= 5);
+
+    if ((statusCurent === "În serviciu" || statusCurent === "După serviciu") && !esteExceptie) return;
+
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
     if (nouStatus !== "Prezent la serviciu") {
       updateObj[`cantina_${ziKeyFiltru}`] = false;
@@ -170,9 +175,6 @@ function App() {
     const realTimeMembru = echipa.find(e => e.id === m.id);
     if (!realTimeMembru) return "Nespecificat";
     const manual = realTimeMembru[`status_${ziKey}`];
-    const plan = serviciiPlan[ziKey] || {};
-    const esteInPlan = plan.responsabil === m.id || (plan.interventie && plan.interventie.includes(m.id));
-    if (manual === "Concediu" || manual === "Foaie de boala") return manual;
     return manual || "Nespecificat";
   };
 
@@ -180,9 +182,7 @@ function App() {
     const m = echipa.find(e => e.id === mId);
     if (!m) return false;
     const status = getStatusMembru(m);
-    const plan = serviciiPlan[ziKey] || {};
-    const esteInPlan = plan.responsabil === mId || (plan.interventie && plan.interventie.includes(mId));
-    return status === "Prezent la serviciu" || esteInPlan;
+    return status === "Prezent la serviciu" || status === "În serviciu";
   };
 
   const nrLaCantina = echipa.filter(m => m[`cantina_${ziKey}`] === true).length;
@@ -274,7 +274,14 @@ function App() {
                 {echipa.map(m => {
                   const status = getStatusMembru(m);
                   const isEditing = membruEditat === m.id;
-                  const esteBlocat = status === "În serviciu" || status === "După serviciu";
+                  
+                  // Logica Admin pentru blocare în listă
+                  const ziData = optiuniZile[ziSelectata].data;
+                  const dataKey = format(ziData, 'dd.MM.yyyy');
+                  const plan = serviciiPlan[dataKey]?.oameni || [];
+                  const esteExceptie = plan.includes(m.numeComplet) && (plan.indexOf(m.numeComplet) >= 5);
+                  const esteBlocat = (status === "În serviciu" || status === "După serviciu") && !esteExceptie;
+
                   return (
                     <div key={m.id} className="flex flex-col gap-1">
                       <button disabled={esteBlocat} onClick={() => { vibreaza(30); setMembruEditat(isEditing ? null : m.id); }}
@@ -350,8 +357,15 @@ function App() {
                     {Object.keys(statusConfig).map(st => {
                       const statusCurent = getStatusMembru(userLogat);
                       const activ = statusCurent === st;
+                      
+                      // Logica User pentru deblocare (Responsabil / Intervenție)
+                      const ziData = optiuniZile[ziSelectata].data;
+                      const dataKey = format(ziData, 'dd.MM.yyyy');
+                      const plan = serviciiPlan[dataKey]?.oameni || [];
+                      const esteExceptie = plan.includes(userLogat?.numeComplet) && (plan.indexOf(userLogat?.numeComplet) >= 5);
+                      
                       const esteStatusDeServiciu = st === "În serviciu" || st === "După serviciu";
-                      const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu" || esteStatusDeServiciu;
+                      const esteBlocat = ((statusCurent === "În serviciu" || statusCurent === "După serviciu") && !esteExceptie) || (esteStatusDeServiciu && !esteExceptie);
                       
                       if (st === "Concediu") {
                         return (
