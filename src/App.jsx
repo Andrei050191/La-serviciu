@@ -151,8 +151,10 @@ function App() {
   const aplicaConcediuLung = async () => {
     vibreaza(80);
     const updates = {};
+    const dataStart = optiuniZile[ziSelectata].data; // Folosim data selectată de user
+    
     for (let i = 0; i < numarZileConcediu; i++) {
-      const dataViitoare = addDays(new Date(), i);
+      const dataViitoare = addDays(dataStart, i);
       const key = format(dataViitoare, 'yyyyMMdd');
       updates[`status_${key}`] = "Concediu";
       updates[`cantina_${key}`] = false;
