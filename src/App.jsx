@@ -215,7 +215,7 @@ function App() {
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
-            <div>{userLogat?.rol === 'admin' ? <h1 className="text-lg font-black uppercase">Admin</h1> : formatIdentitate(userLogat)}</div>
+            <div>{userLogat?.rol === 'admin' ? <h1 className="text-lg font-black uppercase">Administrator</h1> : formatIdentitate(userLogat)}</div>
           </div>
           <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl"><LogOut size={24}/></button>
         </div>
@@ -252,7 +252,7 @@ function App() {
               className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl active:scale-[0.98] transition-all">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div>
-                <div className="text-left"><p className="font-black text-xs uppercase tracking-widest">Planificare Servicii</p></div>
+                <div className="text-left"><p className="font-black text-xs uppercase tracking-widest">Planificarea Serviciilor</p></div>
               </div>
               <ExternalLink size={20} className="text-blue-500 opacity-50" />
             </button>
@@ -340,7 +340,7 @@ function App() {
             {paginaCurenta === 'servicii' ? (
               <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xs font-black uppercase text-blue-400 tracking-widest">Editare Planificare</h2>
+                    <h2 className="text-xs font-black uppercase text-blue-400 tracking-widest">Editare Servicii</h2>
                     <button onClick={() => { vibreaza(30); setPaginaCurenta('personal'); }} className="text-[10px] font-black bg-slate-800 px-4 py-2 rounded-xl italic">Înapoi</button>
                  </div>
                  <ServiciiPage editabil={true} />
@@ -373,7 +373,7 @@ function App() {
                             </button>
                             {showConcediuSelect && !esteBlocat && (
                               <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
-                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Zile Concediu</p>
+                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">cîte yile pleci în concediu</p>
                                  <div className="flex items-center justify-between mb-6">
                                    <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.max(1, numarZileConcediu - 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
                                    <span className="text-4xl font-black">{numarZileConcediu}</span>

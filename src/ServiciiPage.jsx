@@ -129,7 +129,7 @@ const ServiciiPage = ({ editabil }) => {
         return (
           <div key={zi.key} className={`bg-slate-900 rounded-[2rem] border-2 transition-all ${esteAzi ? 'border-green-500 shadow-2xl' : 'border-slate-800'}`}>
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-black/20 rounded-t-[2rem]">
-              <h3 className="text-[11px] font-black uppercase text-white tracking-widest">{zi.display}</h3>
+              <h3 className="text-[17px] font-black uppercase text-white tracking-widest">{zi.display}</h3>
               {editabil && (
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-700">
                   <button onClick={async () => {
@@ -153,11 +153,12 @@ const ServiciiPage = ({ editabil }) => {
 
                 return (
                   <div key={f} className="flex flex-col gap-1">
-                    <label className="text-[12px] font-black text-slate-500 uppercase ml-2 tracking-tighter">{f}</label>
+                    <label className="text-[12px] font-black text-slate-200 uppercase ml-2 tracking-tighter">{f}</label>
                     {editabil ? (
                       <select 
                         value={omPlanificat} 
                         onChange={(e) => handleSchimbare(zi, idx, e.target.value)}
+                        style={{ fontSize: '16px' }} //marimea textului din fereasta de editare
                         className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
                       >
                         <option value="Din altă subunitate">Din altă subunitate</option>
@@ -169,7 +170,8 @@ const ServiciiPage = ({ editabil }) => {
                       </select>
                     ) : (
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
-                        <span className="text-xs font-black text-white/90">
+                        <span style={{ fontSize: '18px' }} //marimea textului din fereastra de alegere
+                        className="font-black text-white/90">
                           {afiseazaNumeFrumos(omPlanificat)}
                         </span>
                         <Shield size={14} className="text-blue-500/20" />
