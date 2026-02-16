@@ -13,7 +13,28 @@ const ServiciiPage = ({ editabil }) => {
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
 
-  const zileAfisate = [-1, 0, 1, 2, 3, 4, 5].map(offset => {
+  // ACEASTA ESTE DOAR PENTRU ASPECTUL VIZUAL
+  const afiseazaNumeFrumos = (numeComplet) => {
+    if (!numeComplet || numeComplet === "Din altă subunitate") return numeComplet;
+    
+    // Căutăm persoana în lista noastră pentru a-i lua bucățile (grad, prenume, nume)
+    const p = personal.find(pers => pers.numeComplet === numeComplet);
+    if (!p) return numeComplet;
+
+    const grad = (p.grad || "").split(' ').map(c => 
+      /^[IVXLC]+$/i.test(c) ? c.toUpperCase() : c.toLowerCase()
+    ).join(' ');
+
+    const prenume = p.prenume 
+      ? p.prenume.charAt(0).toUpperCase() + p.prenume.slice(1).toLowerCase() 
+      : "";
+
+    const nume = (p.nume || "").toUpperCase();
+
+    return `${grad} ${prenume} ${nume}`.trim();
+  };
+
+  const zileAfisate = [ 0, 1, 2, 3, 4, 5].map(offset => {
     const d = addDays(new Date(), offset);
     return {
       key: format(d, 'dd.MM.yyyy'),
@@ -28,6 +49,7 @@ const ServiciiPage = ({ editabil }) => {
     const unsubPers = onSnapshot(q, (snap) => {
       setPersonal(snap.docs.map(d => ({
         id: d.id,
+        // Păstrăm formatul UPPERCASE pentru logică și baze de date
         numeComplet: `${d.data().grad || ''} ${d.data().prenume || ''} ${d.data().nume || ''}`.trim().toUpperCase(),
         ...d.data()
       })));
@@ -57,7 +79,6 @@ const ServiciiPage = ({ editabil }) => {
     const oameniAzi = calendar[zi.key]?.oameni || [];
     const oameniMaine = calendar[maineKey]?.oameni || [];
 
-    // 1. RESTRICȚII (doar dacă nu e "Din altă subunitate")
     if (valoare !== "Din altă subunitate") {
       if (oameniAzi.includes(valoare)) {
         alert(`⚠️ ${valoare} este deja planificat azi!`);
@@ -72,9 +93,6 @@ const ServiciiPage = ({ editabil }) => {
     const functiaCurenta = functii[index];
     const esteInterventie = functiaCurenta.includes("Intervenția");
 
-    // 2. ACTUALIZARE STATUS ÎN LISTĂ/SUMAR
-    
-    // Curățăm statusul vechiului om (dacă nu era la intervenție)
     if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate" && !esteInterventie) {
       const omV = personal.find(p => p.numeComplet === vechiulOmNume);
       if (omV) {
@@ -85,7 +103,6 @@ const ServiciiPage = ({ editabil }) => {
       }
     }
 
-    // Setăm statusul noului om (dacă nu e la intervenție)
     if (valoare !== "Din altă subunitate" && !esteInterventie) {
       const omN = personal.find(p => p.numeComplet === valoare);
       if (omN) {
@@ -96,7 +113,6 @@ const ServiciiPage = ({ editabil }) => {
       }
     }
 
-    // 3. SALVARE ÎN CALENDAR
     if (!nouCalendar[zi.key]) nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
     nouCalendar[zi.key].oameni[index] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
@@ -137,7 +153,7 @@ const ServiciiPage = ({ editabil }) => {
 
                 return (
                   <div key={f} className="flex flex-col gap-1">
-                    <label className="text-[9px] font-black text-slate-500 uppercase ml-2 tracking-tighter">{f}</label>
+                    <label className="text-[12px] font-black text-slate-500 uppercase ml-2 tracking-tighter">{f}</label>
                     {editabil ? (
                       <select 
                         value={omPlanificat} 
@@ -146,12 +162,16 @@ const ServiciiPage = ({ editabil }) => {
                       >
                         <option value="Din altă subunitate">Din altă subunitate</option>
                         {filtrati.map(p => (
-                          <option key={p.id} value={p.numeComplet}>{p.numeComplet}</option>
+                          <option key={p.id} value={p.numeComplet}>
+                            {afiseazaNumeFrumos(p.numeComplet)}
+                          </option>
                         ))}
                       </select>
                     ) : (
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
-                        <span className="text-xs font-black uppercase text-white/90">{omPlanificat}</span>
+                        <span className="text-xs font-black text-white/90">
+                          {afiseazaNumeFrumos(omPlanificat)}
+                        </span>
                         <Shield size={14} className="text-blue-500/20" />
                       </div>
                     )}
