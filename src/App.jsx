@@ -173,7 +173,6 @@ function App() {
     const plan = serviciiPlan[ziKey] || {};
     const esteInPlan = plan.responsabil === m.id || (plan.interventie && plan.interventie.includes(m.id));
     if (manual === "Concediu" || manual === "Foaie de boala") return manual;
-    if (esteInPlan) return "În serviciu";
     return manual || "Nespecificat";
   };
 
