@@ -40,6 +40,11 @@ function App() {
   const [showConcediuSelect, setShowConcediuSelect] = useState(false);
   const [numarZileConcediu, setNumarZileConcediu] = useState(1);
 
+  // Funcție utilitară pentru vibrație
+  const vibreaza = (ms = 40) => {
+    if (navigator.vibrate) navigator.vibrate(ms);
+  };
+
   const optiuniZile = useMemo(() => [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
     const d = addDays(new Date(), i);
     let label = i === 0 ? "Azi" : i === 1 ? "Mâine" : format(d, 'eeee', { locale: ro });
@@ -48,22 +53,39 @@ function App() {
 
   const ziKey = optiuniZile[ziSelectata].key;
 
+  const formatIdentitate = (m) => {
+    if (!m) return null;
+    const formatGrad = (grad) => {
+      if (!grad) return "";
+      return grad.split(' ').map(cuvant => {
+        if (/^[IVXLC]+$/i.test(cuvant)) return cuvant.toUpperCase();
+        return cuvant.toLowerCase();
+      }).join(' ');
+    };
+    const formatPrenume = (p) => {
+      if (!p) return "";
+      return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+    };
+    const formatNume = (n) => n ? n.toUpperCase() : "";
+
+    return (
+      <div className="flex flex-col text-left">
+        <span className="text-xs font-medium text-white/70 leading-none mb-1">
+          {formatGrad(m.grad)}
+        </span>
+        <span className="text-lg font-black text-white">
+          {formatPrenume(m.prenume)} {formatNume(m.nume)}
+        </span>
+      </div>
+    );
+  };
+
   useEffect(() => {
     const unsubServicii = onSnapshot(doc(db, "planificare", "servicii"), (d) => {
       if (d.exists()) setServiciiPlan(d.data());
     });
     return () => unsubServicii();
   }, []);
-
-  const formatIdentitate = (m) => {
-    if (!m) return null;
-    return (
-      <div className="flex flex-col text-left">
-        <span className="text-[10px] font-medium text-white/70 leading-none mb-1 uppercase">{m.grad || ""}</span>
-        <span className="text-sm font-black text-white uppercase">{m.prenume || ""} {m.nume || ""}</span>
-      </div>
-    );
-  };
 
   useEffect(() => {
     const sesiuneSalvata = localStorage.getItem('userEfectiv');
@@ -95,19 +117,25 @@ function App() {
 
   const login = (cod) => {
     if (cod === "0000") {
+      vibreaza(100);
       const admin = { rol: 'admin', nume: 'Administrator' }; setUserLogat(admin);
       localStorage.setItem('userEfectiv', JSON.stringify(admin)); setPaginaCurenta('categorii'); return;
     }
     const gasit = echipa.find(m => String(m.cod) === String(cod));
     if (gasit) {
+      vibreaza(60);
       const u = { ...gasit, rol: 'user' }; setUserLogat(u);
       localStorage.setItem('userEfectiv', JSON.stringify(u)); setPaginaCurenta('personal');
-    } else { setEroareLogin(true); setInputCod(""); }
+    } else { 
+      vibreaza([50, 50, 50]); // Vibrație de eroare
+      setEroareLogin(true); setInputCod(""); 
+    }
   };
 
-  const logout = () => { localStorage.removeItem('userEfectiv'); setUserLogat(null); setPaginaCurenta('login'); };
+  const logout = () => { vibreaza(30); localStorage.removeItem('userEfectiv'); setUserLogat(null); setPaginaCurenta('login'); };
 
   const schimbaStatus = async (id, nouStatus) => {
+    vibreaza(40);
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
     const membru = echipa.find(m => m.id === id);
     const statusCurent = getStatusMembru(membru);
@@ -121,6 +149,7 @@ function App() {
   };
 
   const aplicaConcediuLung = async () => {
+    vibreaza(80);
     const updates = {};
     for (let i = 0; i < numarZileConcediu; i++) {
       const dataViitoare = addDays(new Date(), i);
@@ -133,6 +162,7 @@ function App() {
   };
 
   const toggleCantina = async (id, stare) => {
+    vibreaza(50);
     await updateDoc(doc(db, "echipa", id), { [`cantina_${ziKey}`]: !stare });
   };
 
@@ -171,7 +201,7 @@ function App() {
           <h1 className="text-2xl font-black uppercase mb-8 tracking-tighter">Acces Sistem</h1>
           <input type="password" maxLength="4" value={inputCod} onChange={(e) => setInputCod(e.target.value)}
             className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-4xl tracking-[0.5em] focus:border-blue-500 outline-none mb-4 text-white" placeholder="****" />
-          <button onClick={() => login(inputCod)} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase">Intră</button>
+          <button onClick={() => login(inputCod)} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase active:scale-95 transition-transform">Intră</button>
         </div>
       </div>
     );
@@ -180,7 +210,6 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4">
       <div className="max-w-4xl mx-auto">
-        
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
@@ -191,7 +220,7 @@ function App() {
 
         <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
           {optiuniZile.map((zi, index) => (
-            <button key={zi.key} onClick={() => setZiSelectata(index)} 
+            <button key={zi.key} onClick={() => { vibreaza(20); setZiSelectata(index); }} 
               className={`flex-1 min-w-[100px] py-4 rounded-2xl border-2 transition-all ${ziSelectata === index ? 'bg-blue-700 border-blue-400' : 'bg-slate-900 border-slate-800 opacity-60'}`}>
               <p className="text-[10px] font-black uppercase opacity-60 mb-1">{zi.label}</p>
               <p className="text-sm font-black text-white">{format(zi.data, 'dd MMM')}</p>
@@ -204,7 +233,7 @@ function App() {
             <div className="flex justify-between items-center mb-4">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Indicații Comandant</span>
               {userLogat?.rol === 'admin' && (
-                <button onClick={async () => { if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
+                <button onClick={async () => { vibreaza(30); if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
                   className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">{editIndicatii ? 'Gata' : 'Modifică'}</button>
               )}
             </div>
@@ -217,8 +246,8 @@ function App() {
           </div>
 
           {userLogat?.rol === 'user' && (
-            <button onClick={() => setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii')} 
-              className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl">
+            <button onClick={() => { vibreaza(40); setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii'); }} 
+              className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl active:scale-[0.98] transition-all">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-600 p-3 rounded-2xl text-white"><Shield size={22} /></div>
                 <div className="text-left"><p className="font-black text-xs uppercase tracking-widest">Planificare Servicii</p></div>
@@ -232,7 +261,7 @@ function App() {
           <div className="space-y-6">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
               {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
-                <button key={p} onClick={() => setPaginaCurenta(p)} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+                <button key={p} onClick={() => { vibreaza(25); setPaginaCurenta(p); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
                   {p === 'config_servicii' ? 'EFECTIV' : p.replace('categorii', 'sumar').replace('cantina', 'masă')}
                 </button>
               ))}
@@ -249,7 +278,7 @@ function App() {
                   const esteBlocat = status === "În serviciu" || status === "După serviciu";
                   return (
                     <div key={m.id} className="flex flex-col gap-1">
-                      <button disabled={esteBlocat} onClick={() => setMembruEditat(isEditing ? null : m.id)}
+                      <button disabled={esteBlocat} onClick={() => { vibreaza(30); setMembruEditat(isEditing ? null : m.id); }}
                         className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'} ${esteBlocat ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         {formatIdentitate(m)}
                         <div className="flex items-center gap-2">
@@ -260,7 +289,7 @@ function App() {
                       {isEditing && (
                         <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl">
                           {Object.keys(statusConfig).map(st => (
-                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800">{statusConfig[st].icon} {st}</button>
+                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800 active:bg-slate-800">{statusConfig[st].icon} {st}</button>
                           ))}
                         </div>
                       )}
@@ -310,7 +339,7 @@ function App() {
               <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
                  <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xs font-black uppercase text-blue-400 tracking-widest">Editare Planificare</h2>
-                    <button onClick={() => setPaginaCurenta('personal')} className="text-[10px] font-black bg-slate-800 px-4 py-2 rounded-xl italic">Înapoi</button>
+                    <button onClick={() => { vibreaza(30); setPaginaCurenta('personal'); }} className="text-[10px] font-black bg-slate-800 px-4 py-2 rounded-xl italic">Înapoi</button>
                  </div>
                  <ServiciiPage editabil={true} />
               </div>
@@ -322,14 +351,13 @@ function App() {
                     {Object.keys(statusConfig).map(st => {
                       const statusCurent = getStatusMembru(userLogat);
                       const activ = statusCurent === st;
-                      // MODIFICARE: Blocăm interacțiunea dacă e status de serviciu sau dacă statusul butonului este serviciu
                       const esteStatusDeServiciu = st === "În serviciu" || st === "După serviciu";
                       const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu" || esteStatusDeServiciu;
                       
                       if (st === "Concediu") {
                         return (
                           <div key={st} className="flex flex-col gap-2">
-                            <button disabled={esteBlocat} onClick={() => setShowConcediuSelect(!showConcediuSelect)} 
+                            <button disabled={esteBlocat} onClick={() => { vibreaza(40); setShowConcediuSelect(!showConcediuSelect); }} 
                               className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
                                 ${activ ? 'bg-purple-600 text-white border-purple-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
                                 ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
@@ -342,14 +370,14 @@ function App() {
                               </div>
                             </button>
                             {showConcediuSelect && !esteBlocat && (
-                              <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem]">
+                              <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
                                  <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Zile Concediu</p>
                                  <div className="flex items-center justify-between mb-6">
-                                   <button onClick={() => setNumarZileConcediu(Math.max(1, numarZileConcediu - 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
+                                   <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.max(1, numarZileConcediu - 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
                                    <span className="text-4xl font-black">{numarZileConcediu}</span>
-                                   <button onClick={() => setNumarZileConcediu(Math.min(45, numarZileConcediu + 1))} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
+                                   <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.min(45, numarZileConcediu + 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
                                  </div>
-                                 <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm">Aplică Concediul</button>
+                                 <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm active:scale-95 transition-transform">Aplică Concediul</button>
                               </div>
                             )}
                           </div>
