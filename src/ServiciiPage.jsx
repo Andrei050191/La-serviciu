@@ -13,7 +13,7 @@ const ServiciiPage = ({ editabil }) => {
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
 
-  // AUTO-CURĂȚARE ZILE VECHI
+  // AUTO-CURĂȚARE ZILE VECHI - REPARAT SINTAXĂ
   useEffect(() => {
     if (editabil && Object.keys(calendar).length > 0) {
       const curataZileVechi = async () => {
@@ -22,19 +22,19 @@ const ServiciiPage = ({ editabil }) => {
         const ieri = addDays(azi, -1);
         
         let dateNoi = { ...calendar };
-        let saSchimbat = false; // Corectat aici (fără cratimă)
+        let saSchimbat = false; // Schimbat din s-aSchimbat pentru a evita eroarea Vite
 
         Object.keys(calendar).forEach(key => {
           try {
             const dataDoc = parse(key, 'dd.MM.yyyy', new Date());
             if (dataDoc < ieri) {
               delete dateNoi[key];
-              saSchimbat = true; // Corectat aici
+              saSchimbat = true;
             }
           } catch (e) { console.error("Eroare cheie data:", key); }
         });
 
-        if (saSchimbat) { // Corectat aici
+        if (saSchimbat) {
           await setDoc(doc(db, "servicii", "calendar"), { data: dateNoi });
         }
       };
@@ -59,7 +59,7 @@ const ServiciiPage = ({ editabil }) => {
     return `${grad} ${prenume} ${nume}`.trim();
   };
 
-  const zileAfisate = [0, 1, 2, 3, 4, 5].map(offset => {
+  const zileAfisate = [ 0, 1, 2, 3, 4, 5].map(offset => {
     const d = addDays(new Date(), offset);
     return {
       key: format(d, 'dd.MM.yyyy'),
@@ -92,11 +92,17 @@ const ServiciiPage = ({ editabil }) => {
   }, []);
 
   const handleSchimbare = async (zi, index, valoare) => {
+    // PROTECȚIE: Prevenim eroarea "Cannot read properties of undefined"
     const nouCalendar = JSON.parse(JSON.stringify(calendar || {}));
-    const dateZiCurenta = nouCalendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate") };
-    const vechiulOmNume = dateZiCurenta.oameni[index];
     
+    // Verificăm dacă ziua există în calendar, dacă nu, o inițializăm
+    if (!nouCalendar[zi.key]) {
+        nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
+    }
+
+    const vechiulOmNume = nouCalendar[zi.key].oameni[index];
     const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
+    
     const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
     const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
     
@@ -116,7 +122,7 @@ const ServiciiPage = ({ editabil }) => {
     }
 
     const functiaCurenta = functii[index];
-    const esteInterventie = functiaCurenta?.includes("Intervenția");
+    const esteInterventie = functiaCurenta.includes("Intervenția");
 
     if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate" && !esteInterventie) {
       const omV = personal.find(p => p.numeComplet === vechiulOmNume);
@@ -138,17 +144,16 @@ const ServiciiPage = ({ editabil }) => {
       }
     }
 
-    if (!nouCalendar[zi.key]) nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
     nouCalendar[zi.key].oameni[index] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
-    if (navigator.vibrate) navigator.vibrate(40);
   };
 
-  if (loading) return <div className="p-10 text-center text-white opacity-50 font-black">SE ÎNCARCĂ...</div>;
+  if (loading) return <div className="p-10 text-center text-white opacity-50 font-black tracking-[0.2em]">SE ÎNCARCĂ...</div>;
 
   return (
     <div className="space-y-6">
       {zileAfisate.map((zi) => {
+        // PROTECȚIE ȘI AICI: Dacă ziua nu e în baza de date, folosim o valoare implicită
         const dateZi = calendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
         const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
 
@@ -159,11 +164,13 @@ const ServiciiPage = ({ editabil }) => {
               {editabil && (
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-700">
                   <button onClick={async () => {
-                    const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{oameni: Array(functii.length).fill("Din altă subunitate")}), mod: "1"};
+                    const nC = {...calendar}; 
+                    nC[zi.key] = {...(nC[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate") }), mod: "1"};
                     await setDoc(doc(db, "servicii", "calendar"), { data: nC });
                   }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "1" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><User size={12}/></button>
                   <button onClick={async () => {
-                    const nC = {...calendar}; nC[zi.key] = {...(nC[zi.key]||{oameni: Array(functii.length).fill("Din altă subunitate")}), mod: "2"};
+                    const nC = {...calendar}; 
+                    nC[zi.key] = {...(nC[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate") }), mod: "2"};
                     await setDoc(doc(db, "servicii", "calendar"), { data: nC });
                   }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "2" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><Users size={12}/></button>
                 </div>
@@ -173,7 +180,8 @@ const ServiciiPage = ({ editabil }) => {
             <div className="p-4 space-y-4">
               {functii.map((f, idx) => {
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
-                const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
+                // Verificăm siguranța accesării array-ului de oameni
+                const omPlanificat = (dateZi.oameni && dateZi.oameni[idx]) ? dateZi.oameni[idx] : "Din altă subunitate";
                 const listaE = reguli[f] || [];
                 const filtrati = (listaE.length > 0) ? personal.filter(p => listaE.includes(p.numeComplet)) : personal;
 
