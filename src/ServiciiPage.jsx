@@ -22,7 +22,7 @@ const ServiciiPage = ({ editabil }) => {
         const ieri = addDays(azi, -1);
         
         let dateNoi = { ...calendar };
-        let saSchimbat = false; // Schimbat din s-aSchimbat pentru a evita eroarea Vite
+        let saSchimbat = false;
 
         Object.keys(calendar).forEach(key => {
           try {
@@ -92,12 +92,14 @@ const ServiciiPage = ({ editabil }) => {
   }, []);
 
   const handleSchimbare = async (zi, index, valoare) => {
-    // PROTECȚIE: Prevenim eroarea "Cannot read properties of undefined"
     const nouCalendar = JSON.parse(JSON.stringify(calendar || {}));
     
-    // Verificăm dacă ziua există în calendar, dacă nu, o inițializăm
-    if (!nouCalendar[zi.key]) {
-        nouCalendar[zi.key] = { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
+    // REPARAȚIE: Verificăm dacă ziua are array-ul de oameni, dacă nu, îl creăm
+    if (!nouCalendar[zi.key] || !nouCalendar[zi.key].oameni) {
+        nouCalendar[zi.key] = { 
+            oameni: Array(functii.length).fill("Din altă subunitate"), 
+            mod: nouCalendar[zi.key]?.mod || "2" 
+        };
     }
 
     const vechiulOmNume = nouCalendar[zi.key].oameni[index];
@@ -107,7 +109,7 @@ const ServiciiPage = ({ editabil }) => {
     const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
     
     const oameniIeri = calendar[ieriKey]?.oameni || [];
-    const oameniAzi = calendar[zi.key]?.oameni || [];
+    const oameniAzi = nouCalendar[zi.key].oameni || [];
     const oameniMaine = calendar[maineKey]?.oameni || [];
 
     if (valoare !== "Din altă subunitate") {
@@ -153,8 +155,13 @@ const ServiciiPage = ({ editabil }) => {
   return (
     <div className="space-y-6">
       {zileAfisate.map((zi) => {
-        // PROTECȚIE ȘI AICI: Dacă ziua nu e în baza de date, folosim o valoare implicită
-        const dateZi = calendar[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate"), mod: "2" };
+        // REPARAȚIE VIZUALĂ: Ne asigurăm că dateZi are mereu structura corectă pentru mapare
+        const dateZiIncompleta = calendar[zi.key] || {};
+        const dateZi = {
+          mod: dateZiIncompleta.mod || "2",
+          oameni: dateZiIncompleta.oameni || Array(functii.length).fill("Din altă subunitate")
+        };
+        
         const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
 
         return (
@@ -165,12 +172,12 @@ const ServiciiPage = ({ editabil }) => {
                 <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-700">
                   <button onClick={async () => {
                     const nC = {...calendar}; 
-                    nC[zi.key] = {...(nC[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate") }), mod: "1"};
+                    nC[zi.key] = {...(nC[zi.key] || {}), oameni: dateZi.oameni, mod: "1"};
                     await setDoc(doc(db, "servicii", "calendar"), { data: nC });
                   }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "1" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><User size={12}/></button>
                   <button onClick={async () => {
                     const nC = {...calendar}; 
-                    nC[zi.key] = {...(nC[zi.key] || { oameni: Array(functii.length).fill("Din altă subunitate") }), mod: "2"};
+                    nC[zi.key] = {...(nC[zi.key] || {}), oameni: dateZi.oameni, mod: "2"};
                     await setDoc(doc(db, "servicii", "calendar"), { data: nC });
                   }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "2" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><Users size={12}/></button>
                 </div>
@@ -180,8 +187,7 @@ const ServiciiPage = ({ editabil }) => {
             <div className="p-4 space-y-4">
               {functii.map((f, idx) => {
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
-                // Verificăm siguranța accesării array-ului de oameni
-                const omPlanificat = (dateZi.oameni && dateZi.oameni[idx]) ? dateZi.oameni[idx] : "Din altă subunitate";
+                const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
                 const listaE = reguli[f] || [];
                 const filtrati = (listaE.length > 0) ? personal.filter(p => listaE.includes(p.numeComplet)) : personal;
 
