@@ -59,7 +59,7 @@ const ServiciiPage = ({ editabil }) => {
     return `${grad} ${prenume} ${nume}`.trim();
   };
 
-  const zileAfisate = [ 0, 1, 2, 3, 4, 5].map(offset => {
+  const zileAfisate = [ 0, 1, 2, 3, 4, 5, 6, 7].map(offset => {
     const d = addDays(new Date(), offset);
     return {
       key: format(d, 'dd.MM.yyyy'),
