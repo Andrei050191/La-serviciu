@@ -48,7 +48,7 @@ function App() {
   const optiuniZile = useMemo(() => [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
     const d = addDays(new Date(), i);
     let label = i === 0 ? "Azi" : i === 1 ? "Mâine" : format(d, 'eeee', { locale: ro });
-    return { label, data: d, key: format(d, 'yyyyMMdd'); };
+    return { label, data: d, key: format(d, 'yyyyMMdd') };
   }), []);
 
   const ziKey = optiuniZile[ziSelectata].key;
@@ -137,52 +137,14 @@ function App() {
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(40);
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
-    
-    // 1. Actualizăm mai întâi statusul omului în colecția "echipa"
+    const membru = echipa.find(m => m.id === id);
+    const statusCurent = getStatusMembru(membru);
+    if (statusCurent === "În serviciu" || statusCurent === "După serviciu") return;
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
     if (nouStatus !== "Prezent la serviciu") {
       updateObj[`cantina_${ziKeyFiltru}`] = false;
     }
     await updateDoc(doc(db, "echipa", id), updateObj);
-
-    try {
-      // 2. Citim regulile predefinite din setari/reguli_servicii
-      const reguliSnap = await getDoc(doc(db, "setari", "reguli_servicii"));
-      
-      if (reguliSnap.exists()) {
-        const reguli = reguliSnap.data(); // Structură așteptată: { "id_membru": "nume_scaun_sau_responsabil" }
-        const scaunAtribuit = reguli[id];
-
-        if (scaunAtribuit) {
-          // Citim starea curentă a planificării pentru a nu pierde alte date
-          const serviciiDocRef = doc(db, "planificare", "servicii");
-          const serviciiSnap = await getDoc(serviciiDocRef);
-          let dateZiCurenta = {};
-
-          if (serviciiSnap.exists()) {
-            dateZiCurenta = serviciiSnap.data()[ziKeyFiltru] || {};
-          }
-
-          if (nouStatus === "În serviciu") {
-            // Îl plasăm automat pe scaunul corect în structura zilei din calendar
-            dateZiCurenta[scaunAtribuit] = id;
-          } else {
-            // Dacă s-a schimbat în altceva, îl curățăm din tabel doar dacă el ocupa acel scaun
-            if (dateZiCurenta[scaunAtribuit] === id) {
-              dateZiCurenta[scaunAtribuit] = "";
-            }
-          }
-
-          // Salvăm modificarea înapoi în structura Firebase "planificare/servicii"
-          await updateDoc(serviciiDocRef, {
-            [ziKeyFiltru]: dateZiCurenta
-          });
-        }
-      }
-    } catch (e) {
-      console.error("Eroare la procesarea regulilor de serviciu: ", e);
-    }
-
     setMembruEditat(null);
   };
 
@@ -213,7 +175,7 @@ function App() {
     const plan = serviciiPlan[ziKey] || {};
     const esteInPlan = plan.responsabil === m.id || (plan.interventie && plan.interventie.includes(m.id));
     if (manual === "Concediu" || manual === "Foaie de boala") return manual;
-    if (esteInPlan || manual === "În serviciu") return "În serviciu";
+    if (esteInPlan) return "În serviciu";
     return manual || "Nespecificat";
   };
 
