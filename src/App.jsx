@@ -40,7 +40,6 @@ function App() {
   const [showConcediuSelect, setShowConcediuSelect] = useState(false);
   const [numarZileConcediu, setNumarZileConcediu] = useState(1);
 
-  // Funcție utilitară pentru vibrație
   const vibreaza = (ms = 40) => {
     if (navigator.vibrate) navigator.vibrate(ms);
   };
@@ -127,7 +126,7 @@ function App() {
       const u = { ...gasit, rol: 'user' }; setUserLogat(u);
       localStorage.setItem('userEfectiv', JSON.stringify(u)); setPaginaCurenta('personal');
     } else { 
-      vibreaza([50, 50, 50]); // Vibrație de eroare
+      vibreaza([50, 50, 50]);
       setEroareLogin(true); setInputCod(""); 
     }
   };
@@ -137,21 +136,98 @@ function App() {
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(40);
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
+    const dataSelectata = optiuniZile[ziSelectata].data;
+
+    // Cheile de date necesare pentru calendarul general și ziua următoare
+    const cheieFormatataServicii = format(dataSelectata, 'dd.MM.yyyy');
+    const ziKeyMaineFiltru = format(addDays(dataSelectata, 1), 'yyyyMMdd');
+
     const membru = echipa.find(m => m.id === id);
-    const statusCurent = getStatusMembru(membru);
-    if (statusCurent === "În serviciu" || statusCurent === "După serviciu") return;
-    const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
-    if (nouStatus !== "Prezent la serviciu") {
-      updateObj[`cantina_${ziKeyFiltru}`] = false;
+    if (!membru) return;
+
+    const numeCompletOm = `${membru.grad || ''} ${membru.prenume || ''} ${membru.nume || ''}`.trim().toUpperCase();
+
+    // 1. Preluăm datele actuale din Firebase (Calendar + Reguli)
+    const docCalRef = doc(db, "servicii", "calendar");
+    const docCalSnap = await getDoc(docCalRef);
+    let calendarActual = docCalSnap.exists() ? docCalSnap.data().data || {} : {};
+
+    const docReguliRef = doc(db, "setari", "reguli_servicii");
+    const docReguliSnap = await getDoc(docReguliRef);
+    const reguliServicii = docReguliSnap.exists() ? docReguliSnap.data() : {};
+
+    const functiiLista = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
+
+    if (nouStatus === "În serviciu") {
+      // 2. Verificăm în reguli pentru ce serviciu este preconizat membrul
+      let indexFunctie = -1;
+      for (let f of functiiLista) {
+        const oameniPermisi = reguliServicii[f] || [];
+        if (oameniPermisi.includes(numeCompletOm)) {
+          indexFunctie = functiiLista.indexOf(f);
+          break;
+        }
+      }
+
+      // Fallback în caz că omul nu este legat de nicio regulă specifică
+      if (indexFunctie === -1) {
+        indexFunctie = 7; // Implicit pe ultima poziție (Responsabil)
+      }
+
+      // 3. Inițializăm structura zilei în calendar dacă nu există
+      if (!calendarActual[cheieFormatataServicii]) {
+        calendarActual[cheieFormatataServicii] = { 
+          oameni: Array(functiiLista.length).fill("Din altă subunitate"), 
+          mod: "2" 
+        };
+      }
+
+      // 4. Eliberăm omul vechi care ocupa acel serviciu (dacă exista unul)
+      const omulVechiPeFunctie = calendarActual[cheieFormatataServicii].oameni[indexFunctie];
+      if (omulVechiPeFunctie && omulVechiPeFunctie !== "Din altă subunitate" && omulVechiPeFunctie !== numeCompletOm) {
+        const omV = echipa.find(e => `${e.grad || ''} ${e.prenume || ''} ${e.nume || ''}`.trim().toUpperCase() === omulVechiPeFunctie);
+        if (omV) {
+          await updateDoc(doc(db, "echipa", omV.id), { 
+            [`status_${ziKeyFiltru}`]: "Prezent la serviciu",
+            [`status_${ziKeyMaineFiltru}`]: "Prezent la serviciu" 
+          });
+        }
+      }
+
+      // 5. Plasăm omul nou pe funcția lui în calendarul vizual
+      calendarActual[cheieFormatataServicii].oameni[indexFunctie] = numeCompletOm;
+      await setDoc(docCalRef, { data: calendarActual });
+
+      // 6. Actualizăm stările în profilul personal al membrului
+      await updateDoc(doc(db, "echipa", id), {
+        [`status_${ziKeyFiltru}`]: "În serviciu",
+        [`status_${ziKeyMaineFiltru}`]: "După serviciu"
+      });
+
+    } else {
+      // Dacă omul este mutat pe alt status administrativ (Prezent, Zi liberă, Concediu etc.)
+      // Îl căutăm în ziua curentă de servicii și îl curățăm din tabel
+      if (calendarActual[cheieFormatataServicii] && calendarActual[cheieFormatataServicii].oameni.includes(numeCompletOm)) {
+        const idx = calendarActual[cheieFormatataServicii].oameni.indexOf(numeCompletOm);
+        calendarActual[cheieFormatataServicii].oameni[idx] = "Din altă subunitate";
+        await setDoc(docCalRef, { data: calendarActual });
+      }
+
+      // Salvăm statusul nou ales în listă
+      const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
+      if (nouStatus !== "Prezent la serviciu") {
+        updateObj[`cantina_${ziKeyFiltru}`] = false;
+      }
+      await updateDoc(doc(db, "echipa", id), updateObj);
     }
-    await updateDoc(doc(db, "echipa", id), updateObj);
+
     setMembruEditat(null);
   };
 
   const aplicaConcediuLung = async () => {
     vibreaza(80);
     const updates = {};
-    const dataStart = optiuniZile[ziSelectata].data; // Folosim data selectată de user
+    const dataStart = optiuniZile[ziSelectata].data;
     
     for (let i = 0; i < numarZileConcediu; i++) {
       const dataViitoare = addDays(dataStart, i);
@@ -243,7 +319,7 @@ function App() {
               <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p></div>
             ) : (
               <textarea className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[120px]"
-                value={indicatii} onChange={(e) => setIndicatii(e.target.value)} autoFocus />
+                value={indicatii} onChange={(e) => setEditIndicatii(e.target.value)} autoFocus />
             )}
           </div>
 
@@ -263,7 +339,7 @@ function App() {
           <div className="space-y-6">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
               {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
-                <button key={p} onClick={() => { vibreaza(25); setPaginaCurenta(p); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
+                <button key={p} onClick={() => { vibreaza(25); setPaginaCurenta(p); }} className="flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap bg-slate-900 text-slate-500">
                   {p === 'config_servicii' ? 'EFECTIV' : p.replace('categorii', 'sumar').replace('cantina', 'masă')}
                 </button>
               ))}
@@ -280,19 +356,25 @@ function App() {
                   const esteBlocat = status === "În serviciu" || status === "După serviciu";
                   return (
                     <div key={m.id} className="flex flex-col gap-1">
-                      <button disabled={esteBlocat} onClick={() => { vibreaza(30); setMembruEditat(isEditing ? null : m.id); }}
-                        className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'} ${esteBlocat ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      {/* AM SCOS disabled={esteBlocat} pentru a permite eliberarea din listă */}
+                      <button onClick={() => { vibreaza(30); setMembruEditat(isEditing ? null : m.id); }}
+                        className={`bg-slate-900 p-5 rounded-2xl border flex justify-between items-center ${isEditing ? 'border-blue-500' : 'border-slate-800'}`}>
                         {formatIdentitate(m)}
                         <div className="flex items-center gap-2">
-                           {esteBlocat && <Lock size={12} className="text-slate-400" />}
+                           {esteBlocat && <Lock size={12} className="text-blue-400" />}
                            <span className={`text-[9px] font-black px-3 py-2 rounded-lg text-white ${statusConfig[status]?.color || 'bg-slate-800'}`}>{status}</span>
                         </div>
                       </button>
                       {isEditing && (
                         <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl">
-                          {Object.keys(statusConfig).map(st => (
-                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800 active:bg-slate-800">{statusConfig[st].icon} {st}</button>
-                          ))}
+                          {Object.keys(statusConfig)
+                            // SCOATEM STATUSURILE AUTOMATE DIN MENIUL MANUAL
+                            .filter(st => st !== "În serviciu" && st !== "După serviciu")
+                            .map(st => (
+                              <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800 active:bg-slate-800">
+                                {statusConfig[st].icon} {st}
+                              </button>
+                            ))}
                         </div>
                       )}
                     </div>
