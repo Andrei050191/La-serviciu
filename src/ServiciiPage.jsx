@@ -69,17 +69,32 @@ const ServiciiPage = ({ editabil }) => {
     };
   });
 
+  const motivIndisponibil = (persoana, zi, dateZi, omPlanificat) => {
+    if (!persoana || persoana.numeComplet === omPlanificat) return "";
+
+    const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
+    const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
+    const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
+
+    const statusAzi = persoana[`status_${zi.ziFiltru}`];
+
+    if (statusAzi === "Concediu") return "în concediu";
+    if (statusAzi === "Foaie de boala") return "foaie de boală";
+    if ((calendar[ieriKey]?.oameni || []).includes(persoana.numeComplet)) return "ieri în serviciu";
+    if ((dateZi.oameni || []).includes(persoana.numeComplet)) return "deja azi";
+    if ((calendar[maineKey]?.oameni || []).includes(persoana.numeComplet)) return "mâine în serviciu";
+
+    return "";
+  };
+
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
     const unsubPers = onSnapshot(q, (snap) => {
-      setPersonal(snap.docs
-        .map(d => ({
-          id: d.id,
-          numeComplet: `${d.data().grad || ''} ${d.data().prenume || ''} ${d.data().nume || ''}`.trim().toUpperCase(),
-          ...d.data()
-        }))
-        .filter(p => p.activ !== false)
-      );
+      setPersonal(snap.docs.map(d => ({
+        id: d.id,
+        numeComplet: `${d.data().grad || ''} ${d.data().prenume || ''} ${d.data().nume || ''}`.trim().toUpperCase(),
+        ...d.data()
+      })).filter(p => p.activ !== false));
     });
 
     const unsubCal = onSnapshot(doc(db, "servicii", "calendar"), (snap) => {
@@ -93,24 +108,6 @@ const ServiciiPage = ({ editabil }) => {
 
     return () => { unsubPers(); unsubCal(); unsubReg(); };
   }, []);
-
-  const getMotivIndisponibil = (persoana, zi, omPlanificat) => {
-    if (!persoana || persoana.numeComplet === omPlanificat) return "";
-
-    const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
-    const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
-    const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
-
-    const statusAzi = persoana[`status_${zi.ziFiltru}`];
-
-    if (statusAzi === "Concediu") return "concediu";
-    if (statusAzi === "Foaie de boala") return "foaie de boală";
-    if ((calendar[ieriKey]?.oameni || []).includes(persoana.numeComplet)) return "serviciu ieri";
-    if ((calendar[zi.key]?.oameni || []).includes(persoana.numeComplet)) return "deja azi";
-    if ((calendar[maineKey]?.oameni || []).includes(persoana.numeComplet)) return "serviciu mâine";
-
-    return "";
-  };
 
   const handleSchimbare = async (zi, index, valoare) => {
     const nouCalendar = JSON.parse(JSON.stringify(calendar || {}));
@@ -134,25 +131,20 @@ const ServiciiPage = ({ editabil }) => {
     const oameniMaine = calendar[maineKey]?.oameni || [];
 
     if (valoare !== "Din altă subunitate") {
-      const omSelectat = personal.find(p => p.numeComplet === valoare);
-      const statusSelectatAzi = omSelectat ? omSelectat[`status_${zi.ziFiltru}`] : null;
-
-      if (!omSelectat || omSelectat.activ === false) {
-        alert("⚠️ Persoana este inactivă sau nu mai există în efectiv!");
-        return;
-      }
-
-      if (statusSelectatAzi === "Concediu" || statusSelectatAzi === "Foaie de boala") {
-        alert(`⚠️ ${valoare} nu poate fi planificat: ${statusSelectatAzi}.`);
-        return;
-      }
-
       if (oameniAzi.includes(valoare)) {
         alert(`⚠️ ${valoare} este deja planificat azi!`);
         return;
       }
       if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
         alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
+        return;
+      }
+
+      const persoanaNoua = personal.find(p => p.numeComplet === valoare);
+      const statusAzi = persoanaNoua?.[`status_${zi.ziFiltru}`];
+
+      if (statusAzi === "Concediu" || statusAzi === "Foaie de boala") {
+        alert(`⚠️ ${valoare} nu poate fi planificat: ${statusAzi}.`);
         return;
       }
     }
@@ -237,15 +229,12 @@ const ServiciiPage = ({ editabil }) => {
                       >
                         <option value="Din altă subunitate">Din altă subunitate</option>
                         {filtrati.map(p => {
-                          const motiv = getMotivIndisponibil(p, zi, omPlanificat);
+                          const motiv = motivIndisponibil(p, zi, dateZi, omPlanificat);
+                          const blocat = Boolean(motiv) && p.numeComplet !== omPlanificat;
 
                           return (
-                            <option
-                              key={p.id}
-                              value={p.numeComplet}
-                              disabled={Boolean(motiv)}
-                            >
-                              {afiseazaNumeFrumos(p.numeComplet)}{motiv ? ` — indisponibil: ${motiv}` : ""}
+                            <option key={p.id} value={p.numeComplet} disabled={blocat}>
+                              {afiseazaNumeFrumos(p.numeComplet)}{motiv ? ` — indisponibil: ${motiv}` : ''}
                             </option>
                           );
                         })}

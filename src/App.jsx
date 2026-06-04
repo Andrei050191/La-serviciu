@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, getDoc 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
-import EfectivPage from './EfectivPage';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, CalendarDays, Utensils, Check, Lock, LogOut, 
-  Shield, X, ExternalLink, ChevronDown, ChevronUp
+  Shield, X, ExternalLink, ChevronDown, ChevronUp, Search, FileText, Copy
 } from 'lucide-react';
 
 import ServiciiPage from './ServiciiPage';
@@ -37,6 +36,11 @@ function App() {
   const [indicatii, setIndicatii] = useState("");
   const [editIndicatii, setEditIndicatii] = useState(false);
   const [mesajNou, setMesajNou] = useState(false);
+  const [cautareLista, setCautareLista] = useState('');
+  const [cautareCantina, setCautareCantina] = useState('');
+  const [raportDeschis, setRaportDeschis] = useState(false);
+  const [tentativeGresite, setTentativeGresite] = useState(0);
+  const [blocatPana, setBlocatPana] = useState(null);
   
   const [showConcediuSelect, setShowConcediuSelect] = useState(false);
   const [numarZileConcediu, setNumarZileConcediu] = useState(1);
@@ -100,7 +104,7 @@ function App() {
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setEchipa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setEchipa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.activ !== false));
     });
     return () => unsubscribe();
   }, []);
@@ -117,19 +121,46 @@ function App() {
   }, []);
 
   const login = (cod) => {
+    if (blocatPana && Date.now() < blocatPana) {
+      vibreaza([80, 60, 80]);
+      return;
+    }
+
     if (cod === "0000") {
       vibreaza(100);
-      const admin = { rol: 'admin', nume: 'Administrator' }; setUserLogat(admin);
-      localStorage.setItem('userEfectiv', JSON.stringify(admin)); setPaginaCurenta('categorii'); return;
+      const admin = { rol: 'admin', nume: 'Administrator' };
+      setUserLogat(admin);
+      setTentativeGresite(0);
+      setEroareLogin(false);
+      localStorage.setItem('userEfectiv', JSON.stringify(admin));
+      setPaginaCurenta('categorii');
+      return;
     }
-    const gasit = echipa.find(m => String(m.cod) === String(cod));
+
+    const gasit = echipa.find(m => String(m.cod) === String(cod) && m.activ !== false);
+
     if (gasit) {
       vibreaza(60);
-      const u = { ...gasit, rol: 'user' }; setUserLogat(u);
-      localStorage.setItem('userEfectiv', JSON.stringify(u)); setPaginaCurenta('personal');
-    } else { 
-      vibreaza([50, 50, 50]); // Vibrație de eroare
-      setEroareLogin(true); setInputCod(""); 
+      const u = { ...gasit, rol: 'user' };
+      setUserLogat(u);
+      setTentativeGresite(0);
+      setEroareLogin(false);
+      localStorage.setItem('userEfectiv', JSON.stringify(u));
+      setPaginaCurenta('personal');
+    } else {
+      vibreaza([50, 50, 50]);
+      const nrNou = tentativeGresite + 1;
+      setTentativeGresite(nrNou);
+      setEroareLogin(true);
+      setInputCod("");
+
+      if (nrNou >= 5) {
+        setBlocatPana(Date.now() + 10000);
+        setTimeout(() => {
+          setTentativeGresite(0);
+          setBlocatPana(null);
+        }, 10000);
+      }
     }
   };
 
@@ -196,6 +227,63 @@ function App() {
     return acc;
   }, {});
 
+  const normalizeText = (txt = '') => txt.toString().toLowerCase().trim();
+
+  const echipaFiltrataLista = echipa.filter(m => {
+    const q = normalizeText(cautareLista);
+    if (!q) return true;
+    return normalizeText(`${m.grad || ''} ${m.prenume || ''} ${m.nume || ''} ${m.cod || ''}`).includes(q);
+  });
+
+  const echipaFiltrataCantina = echipa.filter(m => {
+    const q = normalizeText(cautareCantina);
+    if (!q) return true;
+    return normalizeText(`${m.grad || ''} ${m.prenume || ''} ${m.nume || ''} ${m.cod || ''}`).includes(q);
+  });
+
+  const statisticiSumar = {
+    prezenti: categorii["Prezent la serviciu"]?.length || 0,
+    inServiciu: categorii["În serviciu"]?.length || 0,
+    dupaServiciu: categorii["După serviciu"]?.length || 0,
+    cantina: nrLaCantina
+  };
+
+  const textRaport = () => {
+    const dataRaport = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
+    const linii = [`Raport pentru data de ${dataRaport}`];
+
+    Object.keys(statusConfig).forEach(status => {
+      const oameni = categorii[status] || [];
+      const nume = oameni.length > 0
+        ? oameni.map(m => `${m.grad || ''} ${m.prenume || ''} ${m.nume || ''}`.trim()).join('; ')
+        : '—';
+      linii.push(`${status}: ${oameni.length} (${nume})`);
+    });
+
+    const oameniCantina = echipa
+      .filter(m => m[`cantina_${ziKey}`] === true)
+      .map(m => `${m.grad || ''} ${m.prenume || ''} ${m.nume || ''}`.trim());
+
+    linii.push(`La cantină: ${oameniCantina.length} (${oameniCantina.length ? oameniCantina.join('; ') : '—'})`);
+
+    return linii.join('\n');
+  };
+
+  const copiazaRaport = async () => {
+    try {
+      await navigator.clipboard.writeText(textRaport());
+      alert('Raportul a fost copiat.');
+    } catch (e) {
+      alert('Nu am putut copia automat. Selectează textul și copiază manual.');
+    }
+  };
+
+  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv'];
+
+  const adminLabel = (p) => p
+    .replace('categorii', 'sumar')
+    .replace('cantina', 'masă');
+
   if (paginaCurenta === 'login') {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white">
@@ -204,6 +292,11 @@ function App() {
           <h1 className="text-2xl font-black uppercase mb-8 tracking-tighter">Acces Sistem</h1>
           <input type="password" maxLength="4" value={inputCod} onChange={(e) => setInputCod(e.target.value)}
             className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-4xl tracking-[0.5em] focus:border-blue-500 outline-none mb-4 text-white" placeholder="****" />
+          {eroareLogin && (
+            <div className="mb-4 p-3 rounded-2xl bg-red-950/40 border border-red-800 text-red-300 text-xs font-black uppercase">
+              {blocatPana && Date.now() < blocatPana ? 'Prea multe încercări. Așteaptă 10 secunde.' : 'Cod incorect sau utilizator inactiv.'}
+            </div>
+          )}
           <button onClick={() => login(inputCod)} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase active:scale-95 transition-transform">Intră</button>
         </div>
       </div>
@@ -211,7 +304,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-4">
+    <div className="min-h-screen bg-slate-950 text-white p-4 pb-28">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
@@ -262,10 +355,10 @@ function App() {
 
         {userLogat?.rol === 'admin' ? (
           <div className="space-y-6">
-            <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
-              {['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv'].map((p) => (
+            <div className="hidden md:flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
+              {adminPages.map((p) => (
                 <button key={p} onClick={() => { vibreaza(25); setPaginaCurenta(p); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
-                  {p.replace('categorii', 'sumar').replace('cantina', 'masă')}
+                  {adminLabel(p)}
                 </button>
               ))}
             </div>
@@ -275,8 +368,18 @@ function App() {
             {paginaCurenta === 'efectiv' && <EfectivPage />}
             
             {paginaCurenta === 'lista' && (
-              <div className="grid grid-cols-1 gap-3">
-                {echipa.map(m => {
+              <div className="space-y-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
+                  <Search size={18} className="text-slate-500" />
+                  <input
+                    value={cautareLista}
+                    onChange={(e) => setCautareLista(e.target.value)}
+                    placeholder="Caută după nume, grad sau cod..."
+                    className="w-full bg-transparent outline-none text-sm font-bold text-white placeholder:text-slate-600"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                {echipaFiltrataLista.map(m => {
                   const status = getStatusMembru(m);
                   const isEditing = membruEditat === m.id;
                   const esteBlocat = status === "În serviciu" || status === "După serviciu";
@@ -300,14 +403,24 @@ function App() {
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
             
             {paginaCurenta === 'cantina' && (
               <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
                  <h2 className="text-lg font-black uppercase text-orange-500 mb-6 text-center">Masa la cantină ({nrLaCantina})</h2>
+                 <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex items-center gap-3 mb-4">
+                   <Search size={18} className="text-slate-500" />
+                   <input
+                     value={cautareCantina}
+                     onChange={(e) => setCautareCantina(e.target.value)}
+                     placeholder="Caută persoana..."
+                     className="w-full bg-transparent outline-none text-sm font-bold text-white placeholder:text-slate-600"
+                   />
+                 </div>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                   {echipa.map(m => {
+                   {echipaFiltrataCantina.map(m => {
                      const poateManca = poateMancaLaCantina(m.id);
                      return (
                        <button key={m.id} disabled={!poateManca} onClick={() => toggleCantina(m.id, m[`cantina_${ziKey}`])} 
@@ -324,7 +437,54 @@ function App() {
             )}
 
             {paginaCurenta === 'categorii' && (
-              <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">Prezenți</p>
+                    <p className="text-3xl font-black text-green-400">{statisticiSumar.prezenti}</p>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">În serviciu</p>
+                    <p className="text-3xl font-black text-blue-400">{statisticiSumar.inServiciu}</p>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">După serviciu</p>
+                    <p className="text-3xl font-black text-slate-300">{statisticiSumar.dupaServiciu}</p>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">Cantină</p>
+                    <p className="text-3xl font-black text-orange-400">{statisticiSumar.cantina}</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-4">
+                  <button
+                    onClick={() => setRaportDeschis(!raportDeschis)}
+                    className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
+                  >
+                    <FileText size={18} />
+                    Generează raport
+                  </button>
+
+                  {raportDeschis && (
+                    <div className="mt-4 bg-slate-950 border border-slate-800 rounded-2xl p-4">
+                      <textarea
+                        readOnly
+                        value={textRaport()}
+                        className="w-full min-h-[230px] bg-black/30 border border-slate-800 rounded-2xl p-4 text-sm text-white font-mono outline-none"
+                      />
+                      <button
+                        onClick={copiazaRaport}
+                        className="mt-3 w-full bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
+                      >
+                        <Copy size={16} />
+                        Copiază raportul
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
                 {Object.entries(categorii).map(([numeCat, oameni]) => (
                   <div key={numeCat} className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800">
                     <div className="flex justify-between items-center mb-4 font-black uppercase text-sm">
@@ -334,6 +494,7 @@ function App() {
                     <div className="grid grid-cols-1 gap-2">{oameni.map(o => <div key={o.id} className="bg-slate-950 p-3 rounded-xl border border-white/5">{formatIdentitate(o)}</div>)}</div>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </div>
@@ -375,7 +536,7 @@ function App() {
                             </button>
                             {showConcediuSelect && !esteBlocat && (
                               <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
-                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Câte zile pleci în concediu?</p>
+                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">cîte yile pleci în concediu</p>
                                  <div className="flex items-center justify-between mb-6">
                                    <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.max(1, numarZileConcediu - 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
                                    <span className="text-4xl font-black">{numarZileConcediu}</span>
@@ -431,6 +592,22 @@ function App() {
           </div>
         )}
       </div>
+
+      {userLogat?.rol === 'admin' && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 p-2 md:hidden">
+          <div className="grid grid-cols-6 gap-1 max-w-4xl mx-auto">
+            {adminPages.map((p) => (
+              <button
+                key={p}
+                onClick={() => { vibreaza(25); setPaginaCurenta(p); }}
+                className={`py-3 px-1 rounded-2xl font-black text-[9px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-500'}`}
+              >
+                {adminLabel(p)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
