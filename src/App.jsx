@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, getDoc 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
+import EfectivPage from './EfectivPage';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, CalendarDays, Utensils, Check, Lock, LogOut, 
@@ -262,15 +263,16 @@ function App() {
         {userLogat?.rol === 'admin' ? (
           <div className="space-y-6">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 mb-4 overflow-x-auto gap-1">
-              {['categorii', 'cantina', 'lista', 'servicii', 'config_servicii'].map((p) => (
+              {['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv'].map((p) => (
                 <button key={p} onClick={() => { vibreaza(25); setPaginaCurenta(p); }} className={`flex-1 py-3 px-4 rounded-xl font-black text-[10px] uppercase whitespace-nowrap ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>
-                  {p === 'config_servicii' ? 'EFECTIV' : p.replace('categorii', 'sumar').replace('cantina', 'masă')}
+                  {p.replace('categorii', 'sumar').replace('cantina', 'masă')}
                 </button>
               ))}
             </div>
 
             {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
-            {paginaCurenta === 'config_servicii' && <ConfigurareEfectiv />}
+            {paginaCurenta === 'reguli' && <ConfigurareEfectiv />}
+            {paginaCurenta === 'efectiv' && <EfectivPage />}
             
             {paginaCurenta === 'lista' && (
               <div className="grid grid-cols-1 gap-3">
@@ -373,7 +375,7 @@ function App() {
                             </button>
                             {showConcediuSelect && !esteBlocat && (
                               <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
-                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">cîte yile pleci în concediu</p>
+                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Câte zile pleci în concediu?</p>
                                  <div className="flex items-center justify-between mb-6">
                                    <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.max(1, numarZileConcediu - 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
                                    <span className="text-4xl font-black">{numarZileConcediu}</span>
