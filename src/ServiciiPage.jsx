@@ -9,7 +9,7 @@ const ServiciiPage = ({ editabil }) => {
   const [calendar, setCalendar] = useState({});
   const [personal, setPersonal] = useState([]);
   const [reguli, setReguli] = useState({});
-  const [setariServicii, setSetariServicii] = useState({ serviciiZilnic: {}, operatorRadioZilnic: false });
+  const [setariServicii, setSetariServicii] = useState({ operatorRadioZilnic: false });
   const [loading, setLoading] = useState(true);
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
@@ -91,18 +91,7 @@ const ServiciiPage = ({ editabil }) => {
 
     const unsubSetari = onSnapshot(doc(db, "setari", "servicii"), (snap) => {
       if (snap.exists()) {
-        const data = snap.data();
-        const serviciiZilnic = { ...(data.serviciiZilnic || {}) };
-
-        // compatibilitate cu setarea veche pentru Operator radio
-        if (data.operatorRadioZilnic === true) {
-          serviciiZilnic["Operator radio"] = true;
-        }
-
-        setSetariServicii({
-          serviciiZilnic,
-          operatorRadioZilnic: serviciiZilnic["Operator radio"] === true
-        });
+        setSetariServicii({ operatorRadioZilnic: snap.data().operatorRadioZilnic === true });
       }
     });
 
@@ -132,7 +121,8 @@ const ServiciiPage = ({ editabil }) => {
 
     const functiaCurenta = functii[index];
     const esteInterventie = functiaCurenta.includes("Intervenția");
-    const serviciuZilnicActiv = setariServicii.serviciiZilnic?.[functiaCurenta] === true;
+    const esteOperatorRadio = functiaCurenta === "Operator radio";
+    const operatorRadioZilnicActiv = setariServicii.operatorRadioZilnic === true;
 
     if (valoare !== "Din altă subunitate") {
       const esteDejaAzi = oameniAzi.some((om, i) => i !== index && om === valoare);
@@ -141,7 +131,7 @@ const ServiciiPage = ({ editabil }) => {
         return;
       }
 
-      if (!serviciuZilnicActiv) {
+      if (!(esteOperatorRadio && operatorRadioZilnicActiv)) {
         if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
           alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
           return;
@@ -224,7 +214,7 @@ const ServiciiPage = ({ editabil }) => {
                   <div key={f} className="flex flex-col gap-1">
                     <label className="text-[12px] font-black text-slate-200 uppercase ml-2 tracking-tighter flex items-center gap-2">
                       {f}
-                      {setariServicii.serviciiZilnic?.[f] === true && (
+                      {f === "Operator radio" && setariServicii.operatorRadioZilnic === true && (
                         <span className="text-[9px] bg-green-600/20 text-green-300 border border-green-600/30 px-2 py-0.5 rounded-full">zilnic permis</span>
                       )}
                     </label>
