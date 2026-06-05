@@ -16,6 +16,7 @@ import ConfigurareEfectiv from './ConfigurareEfectiv';
 import EfectivPage from './EfectivPage';
 import IstoricPage from './IstoricPage';
 import SetariServiciiPage from './SetariServiciiPage';
+import EfectivLunaPage from './EfectivLunaPage';
 
 const statusConfig = {
   "Prezent la serviciu": { color: "bg-green-600", icon: <Activity size={20} /> },
@@ -328,12 +329,13 @@ function App() {
     }
   };
 
-  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv', 'setari', 'istoric'];
+  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'luna', 'reguli', 'efectiv', 'setari', 'istoric'];
 
   const adminLabel = (p) => p
     .replace('categorii', 'sumar')
     .replace('cantina', 'masă')
-    .replace('setari', 'setări');
+    .replace('setari', 'setări')
+    .replace('luna', 'luna');
 
   if (paginaCurenta === 'login') {
     return (
@@ -399,6 +401,7 @@ function App() {
             </div>
 
             {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
+            {paginaCurenta === 'luna' && <EfectivLunaPage />}
             {paginaCurenta === 'reguli' && <ConfigurareEfectiv />}
             {paginaCurenta === 'efectiv' && <EfectivPage userLogat={userLogat} onLog={scrieIstoric} />}
             {paginaCurenta === 'setari' && <SetariServiciiPage onLog={scrieIstoric} />}
