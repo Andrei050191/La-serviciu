@@ -543,8 +543,8 @@ function App() {
         ) : (
           <div className="space-y-6">
             {paginaCurenta === 'servicii' ? (
-              <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
-                 <div className="flex justify-between items-center mb-6">
+              <div className="space-y-4">
+                 <div className="flex justify-between items-center bg-slate-900 border border-slate-800 rounded-[2rem] px-4 py-3 shadow-xl">
                     <h2 className="text-xs font-black uppercase text-blue-400 tracking-widest">Editare Servicii</h2>
                     <button onClick={() => { vibreaza(30); setPaginaCurenta('personal'); }} className="text-[10px] font-black bg-slate-800 px-4 py-2 rounded-xl italic">Înapoi</button>
                  </div>
