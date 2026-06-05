@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
 import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
 
 const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
@@ -12,6 +12,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
   const [serviciuNou, setServiciuNou] = useState('');
   const [editId, setEditId] = useState(null);
   const [editNume, setEditNume] = useState('');
+  const [dragId, setDragId] = useState(null);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "setari", "servicii"), (snap) => {
@@ -90,6 +91,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
       id: `serviciu_${Date.now()}`,
       nume,
       pozitie,
+      ordineAfisare: serviciiActive.length,
       activ: true
     };
 
@@ -152,6 +154,55 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
     }
   };
 
+
+  const reordoneazaServicii = async (idMutat, idTinta) => {
+    if (!idMutat || !idTinta || idMutat === idTinta) return;
+
+    const lista = normalizeServiciiConfigurate(serviciiConfigurate);
+    const active = lista.filter(s => s.activ !== false);
+    const inactive = lista.filter(s => s.activ === false);
+
+    const fromIndex = active.findIndex(s => s.id === idMutat);
+    const toIndex = active.findIndex(s => s.id === idTinta);
+
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const activeNoi = [...active];
+    const [mutat] = activeNoi.splice(fromIndex, 1);
+    activeNoi.splice(toIndex, 0, mutat);
+
+    const activeCuOrdine = activeNoi.map((s, index) => ({
+      ...s,
+      ordineAfisare: index
+    }));
+
+    const inactiveCuOrdine = inactive.map((s, index) => ({
+      ...s,
+      ordineAfisare: activeCuOrdine.length + index
+    }));
+
+    const listaNoua = [...activeCuOrdine, ...inactiveCuOrdine];
+    setServiciiConfigurate(listaNoua);
+    setDragId(null);
+    await salveazaConfig(listaNoua);
+
+    if (onLog) {
+      await onLog('Reordonare servicii', {
+        ordine: activeCuOrdine.map(s => s.nume).join(' > ')
+      }, null);
+    }
+  };
+
+  const mutaServiciuCuButon = async (id, directie) => {
+    const active = serviciiActive;
+    const index = active.findIndex(s => s.id === id);
+    const indexNou = directie === 'sus' ? index - 1 : index + 1;
+
+    if (index === -1 || indexNou < 0 || indexNou >= active.length) return;
+
+    await reordoneazaServicii(id, active[indexNou].id);
+  };
+
   if (loading) {
     return <div className="p-10 text-center text-white opacity-50 font-black tracking-[0.2em]">SE ÎNCARCĂ...</div>;
   }
@@ -170,7 +221,8 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
         </div>
 
         <div className="bg-slate-950 border border-slate-800 rounded-[2rem] p-4 mb-5">
-          <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-3">Gestionare servicii</p>
+          <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">Gestionare servicii</p>
+          <p className="text-[10px] text-slate-500 font-bold mb-3">Ține apăsat pe mâner și trage serviciul unde vrei. Pe telefon poți folosi și săgețile sus/jos.</p>
 
           <div className="flex gap-2 mb-4">
             <input
@@ -189,20 +241,36 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
 
           <div className="space-y-2">
             {serviciiActive.map((serviciu) => (
-              <div key={serviciu.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-2">
-                {editId === serviciu.id ? (
-                  <input
-                    value={editNume}
-                    onChange={(e) => setEditNume(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white outline-none focus:border-blue-500"
-                    autoFocus
-                  />
-                ) : (
-                  <div>
-                    <p className="text-sm font-black text-white uppercase">{serviciu.nume}</p>
-                    <p className="text-[9px] text-slate-500 font-bold uppercase">Poziția {serviciu.pozitie + 1}</p>
-                  </div>
-                )}
+              <div
+                key={serviciu.id}
+                draggable={editId !== serviciu.id}
+                onDragStart={() => setDragId(serviciu.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => reordoneazaServicii(dragId, serviciu.id)}
+                onDragEnd={() => setDragId(null)}
+                className={`bg-slate-900 border rounded-2xl p-3 flex items-center justify-between gap-2 transition-all ${dragId === serviciu.id ? 'border-blue-500 opacity-60 scale-[0.99]' : 'border-slate-800'}`}
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {editId !== serviciu.id && (
+                    <div className="text-slate-500 cursor-grab active:cursor-grabbing p-1" title="Trage pentru a schimba ordinea">
+                      <GripVertical size={18} />
+                    </div>
+                  )}
+
+                  {editId === serviciu.id ? (
+                    <input
+                      value={editNume}
+                      onChange={(e) => setEditNume(e.target.value)}
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white outline-none focus:border-blue-500"
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-white uppercase truncate">{serviciu.nume}</p>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase">Afișare {serviciiActive.findIndex(s => s.id === serviciu.id) + 1} · Poziția internă {serviciu.pozitie + 1}</p>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex gap-2 shrink-0">
                   {editId === serviciu.id ? (
@@ -212,6 +280,8 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
                     </>
                   ) : (
                     <>
+                      <button onClick={() => mutaServiciuCuButon(serviciu.id, 'sus')} className="bg-slate-800 p-3 rounded-xl active:scale-95" title="Mută mai sus"><ArrowUp size={15} /></button>
+                      <button onClick={() => mutaServiciuCuButon(serviciu.id, 'jos')} className="bg-slate-800 p-3 rounded-xl active:scale-95" title="Mută mai jos"><ArrowDown size={15} /></button>
                       <button onClick={() => incepeEditare(serviciu)} className="bg-slate-800 p-3 rounded-xl active:scale-95"><Pencil size={15} /></button>
                       <button onClick={() => stergeServiciu(serviciu)} className="bg-red-600/20 text-red-300 border border-red-700 p-3 rounded-xl active:scale-95"><Trash2 size={15} /></button>
                     </>
