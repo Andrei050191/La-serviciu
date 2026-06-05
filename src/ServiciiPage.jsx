@@ -145,7 +145,7 @@ const ServiciiPage = ({ editabil }) => {
     const zilnicActiv = serviciuZilnicActivPentru(functieCurenta);
 
     const esteDejaAzi = oameniAzi.some((om, i) => i !== indexCalendar && om === persoana.numeComplet);
-    if (esteDejaAzi) return "deja azi";
+    if (esteDejaAzi) return "în serviciu azi";
 
     // Dacă nu are status setat pentru ziua aleasă, îl tratăm ca „Prezent la serviciu”.
     // Când switch-ul este ACTIV pentru funcția curentă, permitem aceeași persoană în zile consecutive,
@@ -161,8 +161,8 @@ const ServiciiPage = ({ editabil }) => {
       const motivStatus = formatMotivStatus(statusAzi);
       if (motivStatus) return motivStatus;
 
-      if (oameniIeri.includes(persoana.numeComplet)) return "serviciu ieri";
-      if (oameniMaine.includes(persoana.numeComplet)) return "serviciu mâine";
+      if (oameniIeri.includes(persoana.numeComplet)) return "în serviciu ieri";
+      if (oameniMaine.includes(persoana.numeComplet)) return "în serviciu mâine";
     }
 
     return "";
