@@ -229,13 +229,13 @@ function App() {
 
   const getStatusMembru = (m) => {
     const realTimeMembru = echipa.find(e => e.id === m.id);
-    if (!realTimeMembru) return "Nespecificat";
+    if (!realTimeMembru) return "Prezent la serviciu";
     const manual = realTimeMembru[`status_${ziKey}`];
     const plan = serviciiPlan[ziKey] || {};
     const esteInPlan = plan.responsabil === m.id || (plan.interventie && plan.interventie.includes(m.id));
     if (manual === "Concediu" || manual === "Foaie de boala") return manual;
     if (esteInPlan) return "În serviciu";
-    return manual || "Nespecificat";
+    return manual || "Prezent la serviciu";
   };
 
   const poateMancaLaCantina = (mId) => {

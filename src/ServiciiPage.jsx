@@ -113,14 +113,23 @@ const ServiciiPage = ({ editabil }) => {
     return setariServicii.serviciiZilnic?.[functie] === true;
   };
 
+  const formatMotivStatus = (status) => {
+    if (!status) return "";
+    if (status === "Prezent la serviciu") return "";
+    if (status === "Foaie de boala") return "foaie de boală";
+    return status.toLowerCase();
+  };
+
   const getMotivIndisponibil = (persoana, zi, indexFunctie, omPlanificat) => {
     if (!persoana) return "persoană indisponibilă";
     if (persoana.numeComplet === omPlanificat) return "";
     if (persoana.activ === false) return "inactiv";
 
-    const statusAzi = persoana[`status_${zi.ziFiltru}`];
-    if (statusAzi === "Concediu") return "concediu";
-    if (statusAzi === "Foaie de boala") return "foaie de boală";
+    // Dacă nu are status setat pentru ziua aleasă, îl tratăm ca „Prezent la serviciu”.
+    // Se poate selecta doar persoana care este prezentă la serviciu.
+    const statusAzi = persoana[`status_${zi.ziFiltru}`] || "Prezent la serviciu";
+    const motivStatus = formatMotivStatus(statusAzi);
+    if (motivStatus) return motivStatus;
 
     const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
     const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
@@ -274,8 +283,8 @@ const ServiciiPage = ({ editabil }) => {
                       </select>
                       <p className="text-[10px] text-slate-500 font-bold ml-2 mt-1">
                         {zilnicActiv
-                          ? 'Regula pe zile consecutive este permisă pentru acest serviciu. Persoana tot nu poate fi dublată în aceeași zi.'
-                          : 'Nu poți selecta persoana dacă este deja azi, a fost ieri sau este planificată mâine.'}
+                          ? 'Poți selecta doar persoana prezentă la serviciu. Regula pe zile consecutive este permisă pentru acest serviciu, dar persoana tot nu poate fi dublată în aceeași zi.'
+                          : 'Poți selecta doar persoana prezentă la serviciu. Nu poți selecta dacă e concediu, zi liberă, deplasare, foaie de boală, deja azi, serviciu ieri sau serviciu mâine.'}
                       </p>
                       </>
                     ) : (
