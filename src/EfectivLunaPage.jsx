@@ -27,6 +27,29 @@ const prescurtari = {
   'Responsabil': 'RESP'
 };
 
+
+const statusPrescurtari = {
+  'În serviciu': 'SERV',
+  'După serviciu': 'DUPĂ',
+  'Zi liberă': 'LIB',
+  'Concediu': 'CONC',
+  'Deplasare': 'DEPL',
+  'Foaie de boala': 'BOALĂ',
+  'Foaie de boală': 'BOALĂ',
+  'Nespecificat': '',
+  'Prezent la serviciu': ''
+};
+
+const statusCulori = {
+  'În serviciu': 'bg-blue-700 text-white',
+  'După serviciu': 'bg-slate-600 text-white',
+  'Zi liberă': 'bg-yellow-700 text-white',
+  'Concediu': 'bg-purple-700 text-white',
+  'Deplasare': 'bg-orange-700 text-white',
+  'Foaie de boala': 'bg-red-700 text-white',
+  'Foaie de boală': 'bg-red-700 text-white'
+};
+
 const EfectivLunaPage = () => {
   const [personal, setPersonal] = useState([]);
   const [calendar, setCalendar] = useState({});
@@ -81,6 +104,21 @@ const EfectivLunaPage = () => {
       .filter(Boolean);
   };
 
+
+  const statusPentruPersoanaInZi = (persoana, data) => {
+    const key = format(data, 'yyyyMMdd');
+    const status = persoana[`status_${key}`];
+    if (!status || status === 'Prezent la serviciu' || status === 'Nespecificat') return '';
+    return status;
+  };
+
+  const continutCelula = (persoana, data) => {
+    const serv = serviciiPentruPersoanaInZi(persoana, data).map(s => prescurtari[s] || s);
+    const status = statusPentruPersoanaInZi(persoana, data);
+    const statusScurt = status ? (statusPrescurtari[status] || status) : '';
+    return [...serv, ...(statusScurt ? [statusScurt] : [])];
+  };
+
   const totalServicii = (persoana) => {
     return zileLuna.reduce((total, data) => total + serviciiPentruPersoanaInZi(persoana, data).length, 0);
   };
@@ -94,10 +132,7 @@ const EfectivLunaPage = () => {
   const copiazaTabel = async () => {
     const antet = ['Persoana', ...zileLuna.map(d => format(d, 'dd.MM')), 'Total'];
     const randuri = personal.map(p => {
-      const celule = zileLuna.map(d => {
-        const serv = serviciiPentruPersoanaInZi(p, d);
-        return serv.length ? serv.map(s => prescurtari[s] || s).join('+') : '';
-      });
+      const celule = zileLuna.map(d => continutCelula(p, d).join('+'));
       return [afiseazaNumeFrumos(p), ...celule, String(totalServicii(p))].join('\t');
     });
 
@@ -204,19 +239,26 @@ const EfectivLunaPage = () => {
                     </td>
                     {zileLuna.map(data => {
                       const serv = serviciiPentruPersoanaInZi(p, data);
+                      const status = statusPentruPersoanaInZi(p, data);
+                      const celula = continutCelula(p, data);
                       return (
                         <td
                           key={data.toISOString()}
-                          title={serv.join(', ')}
+                          title={[...serv, status].filter(Boolean).join(', ')}
                           className={`p-1 text-center border-r border-slate-800 align-middle ${isToday(data) ? 'bg-green-600/10' : ''}`}
                         >
-                          {serv.length > 0 ? (
+                          {celula.length > 0 ? (
                             <div className="inline-flex flex-col gap-1">
                               {serv.map(s => (
                                 <span key={s} className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-1 rounded-lg leading-none">
                                   {prescurtari[s] || s}
                                 </span>
                               ))}
+                              {status && (
+                                <span className={`${statusCulori[status] || 'bg-slate-700 text-white'} text-[9px] font-black px-1.5 py-1 rounded-lg leading-none`}>
+                                  {statusPrescurtari[status] || status}
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-slate-700">·</span>
@@ -247,7 +289,7 @@ const EfectivLunaPage = () => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-[11px] text-slate-400 font-bold leading-relaxed">
-        Prescurtări: A.OSU = Ajutor OSU, SGT = Sergent de serviciu PCT, PL = Planton, PAT = Patrulă, RAD = Operator radio, INT1/INT2 = Intervenția, RESP = Responsabil.
+        Prescurtări: A.OSU = Ajutor OSU, SGT = Sergent de serviciu PCT, PL = Planton, PAT = Patrulă, RAD = Operator radio, INT1/INT2 = Intervenția, RESP = Responsabil. Statusuri afișate: CONC = Concediu, LIB = Zi liberă, DEPL = Deplasare, BOALĂ = Foaie de boală, DUPĂ = După serviciu. Statusul Prezent la serviciu nu se afișează.
       </div>
     </div>
   );
