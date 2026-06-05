@@ -276,7 +276,7 @@ const ServiciiPage = ({ editabil }) => {
                         value={omPlanificat} 
                         onChange={(e) => handleSchimbare(zi, idx, e.target.value)}
                         style={{ fontSize: '16px' }}
-                        className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
+                        className="w-full bg-slate-950 border border-slate-800 p-3 py-2 rounded-xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
                       >
                         <option value="Din altă subunitate">Din altă subunitate</option>
                         {filtrati.map(p => {
@@ -291,7 +291,7 @@ const ServiciiPage = ({ editabil }) => {
                      
                       </>
                     ) : (
-                      <div className="bg-slate-950 px-3 py-2 rounded-xl border border-slate-800/50 flex justify-between items-center">
+                      <div className="bg-slate-950 px-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
                         <span style={{ fontSize: '18px' }} className="font-black text-white/90">
                           {afiseazaNumeFrumos(omPlanificat)}
                         </span>
