@@ -329,7 +329,7 @@ function App() {
     }
   };
 
-  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'luna', 'reguli', 'efectiv', 'setari', 'istoric'];
+  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'luna', 'reguli', 'efectiv', 'setari'];
 
   const adminLabel = (p) => p
     .replace('categorii', 'sumar')
@@ -404,7 +404,7 @@ function App() {
             {paginaCurenta === 'luna' && <EfectivLunaPage />}
             {paginaCurenta === 'reguli' && <ConfigurareEfectiv />}
             {paginaCurenta === 'efectiv' && <EfectivPage userLogat={userLogat} onLog={scrieIstoric} />}
-            {paginaCurenta === 'setari' && <SetariServiciiPage onLog={scrieIstoric} />}
+            {paginaCurenta === 'setari' && <SetariServiciiPage onLog={scrieIstoric} onOpenIstoric={() => setPaginaCurenta('istoric')} />}
             {paginaCurenta === 'istoric' && <IstoricPage />}
             
             {paginaCurenta === 'lista' && (

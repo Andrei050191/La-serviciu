@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Settings, ToggleLeft, ToggleRight, Save } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, Save, History } from 'lucide-react';
 
 const functiiServicii = [
   'Ajutor OSU',
@@ -14,7 +14,7 @@ const functiiServicii = [
   'Responsabil'
 ];
 
-const SetariServiciiPage = ({ onLog }) => {
+const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
   const [serviciiZilnic, setServiciiZilnic] = useState({});
   const [loading, setLoading] = useState(true);
   const [salvare, setSalvare] = useState(false);
@@ -118,6 +118,14 @@ const SetariServiciiPage = ({ onLog }) => {
             Setările se salvează în Firebase. Pentru funcțiile activate, aceeași persoană poate fi planificată în zile consecutive doar la funcția respectivă.
           </p>
         </div>
+
+        <button
+          onClick={onOpenIstoric}
+          className="mt-4 w-full bg-slate-950 border border-slate-700 hover:bg-slate-800 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2 text-slate-200"
+        >
+          <History size={18} />
+          Istoric modificări
+        </button>
       </div>
     </div>
   );
