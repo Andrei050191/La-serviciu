@@ -7,9 +7,10 @@ import {
   orderBy,
   doc,
   updateDoc,
-  addDoc
+  addDoc,
+  deleteDoc
 } from 'firebase/firestore';
-import { Plus, Save, X, Pencil, UserCheck, UserX } from 'lucide-react';
+import { Plus, Save, X, Pencil, UserCheck, UserX, Trash2 } from 'lucide-react';
 
 const formularGol = {
   grad: '',
@@ -20,7 +21,7 @@ const formularGol = {
   activ: true
 };
 
-const EfectivPage = () => {
+const EfectivPage = ({ onLog }) => {
   const [personal, setPersonal] = useState([]);
   const [formular, setFormular] = useState(formularGol);
   const [idEditare, setIdEditare] = useState(null);
@@ -38,6 +39,14 @@ const EfectivPage = () => {
 
     return () => unsub();
   }, []);
+
+  const numePentruIstoric = (p) => `${p?.grad || ''} ${p?.prenume || ''} ${p?.nume || ''}`.trim();
+
+  const logLocal = async (actiune, detalii, persoana) => {
+    if (onLog) {
+      await onLog(actiune, detalii, persoana);
+    }
+  };
 
   const schimbaCamp = (camp, valoare) => {
     setFormular(prev => ({
@@ -65,9 +74,25 @@ const EfectivPage = () => {
     setShowForm(true);
   };
 
+  const parolaValida = (parola) => {
+    return String(parola || '').trim().length > 0;
+  };
+
   const salveazaPersoana = async () => {
     if (!formular.grad.trim() || !formular.prenume.trim() || !formular.nume.trim() || !String(formular.cod).trim()) {
-      alert("Completează gradul, prenumele, numele și codul.");
+      alert("Completează gradul, prenumele, numele și parola.");
+      return;
+    }
+
+    if (!parolaValida(formular.cod)) {
+      alert("Parola nu poate fi goală.");
+      return;
+    }
+
+    const codNou = String(formular.cod).trim();
+    const parolaExista = personal.some(p => p.id !== idEditare && String(p.cod || '').trim() === codNou);
+    if (parolaExista) {
+      alert("Această parolă este deja folosită de altă persoană.");
       return;
     }
 
@@ -75,24 +100,55 @@ const EfectivPage = () => {
       grad: formular.grad.trim(),
       prenume: formular.prenume.trim(),
       nume: formular.nume.trim(),
-      cod: String(formular.cod).trim(),
+      cod: codNou,
       ordine: Number(formular.ordine) || 1,
       activ: formular.activ !== false
     };
 
     if (idEditare) {
+      const vechi = personal.find(p => p.id === idEditare);
       await updateDoc(doc(db, "echipa", idEditare), dateSalvare);
+      await logLocal("Modificare persoană", {
+        inainte: vechi ? numePentruIstoric(vechi) : null,
+        dupa: numePentruIstoric(dateSalvare),
+        ordine: dateSalvare.ordine,
+        activ: dateSalvare.activ
+      }, { id: idEditare, ...dateSalvare });
     } else {
-      await addDoc(collection(db, "echipa"), dateSalvare);
+      const ref = await addDoc(collection(db, "echipa"), dateSalvare);
+      await logLocal("Adăugare persoană", {
+        persoana: numePentruIstoric(dateSalvare),
+        ordine: dateSalvare.ordine
+      }, { id: ref.id, ...dateSalvare });
     }
 
     reseteazaFormular();
   };
 
   const toggleActiv = async (p) => {
+    const stareNoua = p.activ === false ? true : false;
     await updateDoc(doc(db, "echipa", p.id), {
-      activ: p.activ === false ? true : false
+      activ: stareNoua
     });
+    await logLocal(stareNoua ? "Activare persoană" : "Dezactivare persoană", {
+      stareNoua: stareNoua ? "Activ" : "Inactiv"
+    }, p);
+  };
+
+  const stergePersoana = async (p) => {
+    const confirmare = window.confirm(
+      `Sigur vrei să ștergi definitiv persoana ${numePentruIstoric(p)}?\n\nPentru persoane eliberate este mai sigur să folosești butonul Inactiv. Ștergerea definitivă nu se poate anula.`
+    );
+
+    if (!confirmare) return;
+
+    await logLocal("Ștergere persoană", {
+      persoana: numePentruIstoric(p),
+      cod: p.cod || null,
+      ordine: p.ordine || null
+    }, p);
+
+    await deleteDoc(doc(db, "echipa", p.id));
   };
 
   const formatGrad = (grad) => {
@@ -123,7 +179,7 @@ const EfectivPage = () => {
               Efectiv subunitate
             </h2>
             <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
-              Adaugă, modifică grad, nume, cod și ordine
+              Adaugă, modifică, dezactivează sau șterge persoane
             </p>
           </div>
 
@@ -188,14 +244,18 @@ const EfectivPage = () => {
 
               <div>
                 <label className="text-[9px] font-black uppercase text-slate-500 ml-2">
-                  Cod login
+                  Parolă login
                 </label>
                 <input
+                  type="text"
                   value={formular.cod}
                   onChange={(e) => schimbaCamp("cod", e.target.value)}
-                  placeholder="ex: 1234"
+                  placeholder="ex: 1234, Andrei, parolaMea"
                   className="w-full bg-slate-900 border border-slate-800 p-4 rounded-2xl text-white text-sm font-bold outline-none focus:border-blue-500"
                 />
+                <p className="text-[9px] text-slate-500 font-bold mt-1 ml-2">
+                  Poate fi cum vrei: cifre, litere sau combinat. Important să nu fie goală.
+                </p>
               </div>
 
               <div>
@@ -271,7 +331,7 @@ const EfectivPage = () => {
 
                   <div className="flex flex-wrap gap-2 mt-2">
                     <span className="bg-slate-900 border border-slate-800 px-2 py-1 rounded-lg text-[9px] font-black text-slate-400 uppercase">
-                      Cod: {p.cod || "—"}
+                      Parolă: {p.cod || "—"}
                     </span>
 
                     <span className="bg-slate-900 border border-slate-800 px-2 py-1 rounded-lg text-[9px] font-black text-slate-400 uppercase">
@@ -307,6 +367,14 @@ const EfectivPage = () => {
                     title={activ ? "Dezactivează" : "Activează"}
                   >
                     {activ ? <UserX size={18} /> : <UserCheck size={18} />}
+                  </button>
+
+                  <button
+                    onClick={() => stergePersoana(p)}
+                    className="p-3 rounded-xl bg-red-600/20 text-red-400 hover:bg-red-600/30 active:scale-95 transition-all"
+                    title="Șterge definitiv"
+                  >
+                    <Trash2 size={18} />
                   </button>
                 </div>
               </div>

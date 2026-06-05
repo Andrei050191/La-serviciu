@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, serverTimestamp 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -14,6 +14,7 @@ import {
 import ServiciiPage from './ServiciiPage';
 import ConfigurareEfectiv from './ConfigurareEfectiv';
 import EfectivPage from './EfectivPage';
+import IstoricPage from './IstoricPage';
 
 const statusConfig = {
   "Prezent la serviciu": { color: "bg-green-600", icon: <Activity size={20} /> },
@@ -153,6 +154,29 @@ function App() {
 
   const logout = () => { vibreaza(30); localStorage.removeItem('userEfectiv'); setUserLogat(null); setPaginaCurenta('login'); };
 
+  const numePentruIstoric = (m) => {
+    if (!m) return "Necunoscut";
+    return `${m.grad || ''} ${m.prenume || ''} ${m.nume || ''}`.trim();
+  };
+
+  const scrieIstoric = async (actiune, detalii = {}, persoanaVizata = null) => {
+    try {
+      await addDoc(collection(db, "istoric_modificari"), {
+        actiune,
+        detalii,
+        persoanaVizataId: persoanaVizata?.id || null,
+        persoanaVizataNume: persoanaVizata ? numePentruIstoric(persoanaVizata) : null,
+        facutDeId: userLogat?.id || null,
+        facutDeNume: userLogat?.rol === 'admin' ? 'Administrator' : numePentruIstoric(userLogat),
+        facutDeRol: userLogat?.rol || 'necunoscut',
+        dataClient: new Date().toISOString(),
+        createdAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.warn('Nu am putut salva istoricul:', e);
+    }
+  };
+
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(40);
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
@@ -164,6 +188,11 @@ function App() {
       updateObj[`cantina_${ziKeyFiltru}`] = false;
     }
     await updateDoc(doc(db, "echipa", id), updateObj);
+    await scrieIstoric("Schimbare status", {
+      data: format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy'),
+      statusVechi: statusCurent,
+      statusNou: nouStatus
+    }, membru);
     setMembruEditat(null);
   };
 
@@ -179,12 +208,21 @@ function App() {
       updates[`cantina_${key}`] = false;
     }
     await updateDoc(doc(db, "echipa", userLogat.id), updates);
+    await scrieIstoric("Concediu aplicat", {
+      dataStart: format(dataStart, 'dd.MM.yyyy'),
+      numarZile: numarZileConcediu
+    }, userLogat);
     setShowConcediuSelect(false);
   };
 
   const toggleCantina = async (id, stare) => {
     vibreaza(50);
+    const membru = echipa.find(m => m.id === id);
     await updateDoc(doc(db, "echipa", id), { [`cantina_${ziKey}`]: !stare });
+    await scrieIstoric("Modificare cantină", {
+      data: format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy'),
+      stareNoua: !stare ? 'La cantină' : 'Acasă'
+    }, membru);
   };
 
   const getStatusMembru = (m) => {
@@ -289,7 +327,7 @@ function App() {
     }
   };
 
-  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv'];
+  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv', 'istoric'];
 
   const adminLabel = (p) => p
     .replace('categorii', 'sumar')
@@ -301,8 +339,8 @@ function App() {
         <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 w-full max-w-sm text-center">
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><Lock size={32} /></div>
           <h1 className="text-2xl font-black uppercase mb-8 tracking-tighter">Acces Sistem</h1>
-          <input type="password" maxLength="4" value={inputCod} onChange={(e) => setInputCod(e.target.value)}
-            className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-4xl tracking-[0.5em] focus:border-blue-500 outline-none mb-4 text-white" placeholder="****" />
+          <input type="password" value={inputCod} onChange={(e) => setInputCod(e.target.value)}
+            className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-2xl focus:border-blue-500 outline-none mb-4 text-white" placeholder="Parolă" autoComplete="current-password" />
           {eroareLogin && (
             <div className="mb-4 p-3 rounded-2xl bg-red-950/40 border border-red-800 text-red-300 text-xs font-black uppercase">
               {blocatPana && Date.now() < blocatPana ? 'Prea multe încercări. Așteaptă 10 secunde.' : 'Cod incorect sau utilizator inactiv.'}
@@ -360,7 +398,8 @@ function App() {
 
             {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
             {paginaCurenta === 'reguli' && <ConfigurareEfectiv />}
-            {paginaCurenta === 'efectiv' && <EfectivPage />}
+            {paginaCurenta === 'efectiv' && <EfectivPage userLogat={userLogat} onLog={scrieIstoric} />}
+            {paginaCurenta === 'istoric' && <IstoricPage />}
             
             {paginaCurenta === 'lista' && (
               <div className="space-y-4">
@@ -590,7 +629,7 @@ function App() {
 
       {userLogat?.rol === 'admin' && (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 p-2 md:hidden">
-          <div className="grid grid-cols-6 gap-1 max-w-4xl mx-auto">
+          <div className="grid grid-cols-7 gap-1 max-w-4xl mx-auto">
             {adminPages.map((p) => (
               <button
                 key={p}
