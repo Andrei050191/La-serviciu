@@ -291,7 +291,7 @@ const ServiciiPage = ({ editabil }) => {
                      
                       </>
                     ) : (
-                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
+                      <div className="bg-slate-950 px-3 py-2 rounded-xl border border-slate-800/50 flex justify-between items-center">
                         <span style={{ fontSize: '18px' }} className="font-black text-white/90">
                           {afiseazaNumeFrumos(omPlanificat)}
                         </span>
