@@ -350,22 +350,6 @@ function App() {
         </div>
 
         <div className="space-y-3 mb-8">
-          <div className={`p-5 rounded-[2rem] border-2 transition-all ${mesajNou ? 'border-red-500 bg-red-950/30' : 'border-slate-800 bg-slate-900'}`}>
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Indicații Comandant</span>
-              {userLogat?.rol === 'admin' && (
-                <button onClick={async () => { vibreaza(30); if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
-                  className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">{editIndicatii ? 'Gata' : 'Modifică'}</button>
-              )}
-            </div>
-            {!editIndicatii ? (
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p></div>
-            ) : (
-              <textarea className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[120px]"
-                value={indicatii} onChange={(e) => setIndicatii(e.target.value)} autoFocus />
-            )}
-          </div>
-
           {userLogat?.rol === 'user' && (
             <button onClick={() => { vibreaza(40); setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii'); }} 
               className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl active:scale-[0.98] transition-all">
