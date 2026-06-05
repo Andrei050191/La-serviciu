@@ -9,6 +9,7 @@ const ServiciiPage = ({ editabil }) => {
   const [calendar, setCalendar] = useState({});
   const [personal, setPersonal] = useState([]);
   const [reguli, setReguli] = useState({});
+  const [setariServicii, setSetariServicii] = useState({ serviciiZilnic: {}, operatorRadioZilnic: false });
   const [loading, setLoading] = useState(true);
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
@@ -69,24 +70,6 @@ const ServiciiPage = ({ editabil }) => {
     };
   });
 
-  const motivIndisponibil = (persoana, zi, dateZi, omPlanificat) => {
-    if (!persoana || persoana.numeComplet === omPlanificat) return "";
-
-    const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
-    const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
-    const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
-
-    const statusAzi = persoana[`status_${zi.ziFiltru}`];
-
-    if (statusAzi === "Concediu") return "în concediu";
-    if (statusAzi === "Foaie de boala") return "foaie de boală";
-    if ((calendar[ieriKey]?.oameni || []).includes(persoana.numeComplet)) return "ieri în serviciu";
-    if ((dateZi.oameni || []).includes(persoana.numeComplet)) return "deja azi";
-    if ((calendar[maineKey]?.oameni || []).includes(persoana.numeComplet)) return "mâine în serviciu";
-
-    return "";
-  };
-
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
     const unsubPers = onSnapshot(q, (snap) => {
@@ -94,7 +77,7 @@ const ServiciiPage = ({ editabil }) => {
         id: d.id,
         numeComplet: `${d.data().grad || ''} ${d.data().prenume || ''} ${d.data().nume || ''}`.trim().toUpperCase(),
         ...d.data()
-      })).filter(p => p.activ !== false));
+      })));
     });
 
     const unsubCal = onSnapshot(doc(db, "servicii", "calendar"), (snap) => {
@@ -106,7 +89,24 @@ const ServiciiPage = ({ editabil }) => {
       if (snap.exists()) setReguli(snap.data());
     });
 
-    return () => { unsubPers(); unsubCal(); unsubReg(); };
+    const unsubSetari = onSnapshot(doc(db, "setari", "servicii"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const serviciiZilnic = { ...(data.serviciiZilnic || {}) };
+
+        // compatibilitate cu setarea veche pentru Operator radio
+        if (data.operatorRadioZilnic === true) {
+          serviciiZilnic["Operator radio"] = true;
+        }
+
+        setSetariServicii({
+          serviciiZilnic,
+          operatorRadioZilnic: serviciiZilnic["Operator radio"] === true
+        });
+      }
+    });
+
+    return () => { unsubPers(); unsubCal(); unsubReg(); unsubSetari(); };
   }, []);
 
   const handleSchimbare = async (zi, index, valoare) => {
@@ -130,35 +130,38 @@ const ServiciiPage = ({ editabil }) => {
     const oameniAzi = nouCalendar[zi.key].oameni || [];
     const oameniMaine = calendar[maineKey]?.oameni || [];
 
+    const functiaCurenta = functii[index];
+    const esteInterventie = functiaCurenta.includes("Intervenția");
+    const serviciuZilnicActiv = setariServicii.serviciiZilnic?.[functiaCurenta] === true;
+
     if (valoare !== "Din altă subunitate") {
-      if (oameniAzi.includes(valoare)) {
+      const esteDejaAzi = oameniAzi.some((om, i) => i !== index && om === valoare);
+      if (esteDejaAzi) {
         alert(`⚠️ ${valoare} este deja planificat azi!`);
         return;
       }
-      if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
-        alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
-        return;
-      }
 
-      const persoanaNoua = personal.find(p => p.numeComplet === valoare);
-      const statusAzi = persoanaNoua?.[`status_${zi.ziFiltru}`];
-
-      if (statusAzi === "Concediu" || statusAzi === "Foaie de boala") {
-        alert(`⚠️ ${valoare} nu poate fi planificat: ${statusAzi}.`);
-        return;
+      if (!serviciuZilnicActiv) {
+        if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
+          alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
+          return;
+        }
       }
     }
-
-    const functiaCurenta = functii[index];
-    const esteInterventie = functiaCurenta.includes("Intervenția");
 
     if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate" && !esteInterventie) {
       const omV = personal.find(p => p.numeComplet === vechiulOmNume);
       if (omV) {
-        await updateDoc(doc(db, "echipa", omV.id), { 
-          [`status_${zi.ziFiltru}`]: "Prezent la serviciu",
-          [`status_${zi.ziUrmatoareFiltru}`]: "Prezent la serviciu"
-        });
+        const updateVechi = {
+          [`status_${zi.ziFiltru}`]: "Prezent la serviciu"
+        };
+
+        const vechiulOmEstePlanificatMaine = oameniMaine.includes(vechiulOmNume);
+        if (!vechiulOmEstePlanificatMaine) {
+          updateVechi[`status_${zi.ziUrmatoareFiltru}`] = "Prezent la serviciu";
+        }
+
+        await updateDoc(doc(db, "echipa", omV.id), updateVechi);
       }
     }
 
@@ -219,7 +222,12 @@ const ServiciiPage = ({ editabil }) => {
 
                 return (
                   <div key={f} className="flex flex-col gap-1">
-                    <label className="text-[12px] font-black text-slate-200 uppercase ml-2 tracking-tighter">{f}</label>
+                    <label className="text-[12px] font-black text-slate-200 uppercase ml-2 tracking-tighter flex items-center gap-2">
+                      {f}
+                      {setariServicii.serviciiZilnic?.[f] === true && (
+                        <span className="text-[9px] bg-green-600/20 text-green-300 border border-green-600/30 px-2 py-0.5 rounded-full">zilnic permis</span>
+                      )}
+                    </label>
                     {editabil ? (
                       <select 
                         value={omPlanificat} 
@@ -228,16 +236,11 @@ const ServiciiPage = ({ editabil }) => {
                         className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
                       >
                         <option value="Din altă subunitate">Din altă subunitate</option>
-                        {filtrati.map(p => {
-                          const motiv = motivIndisponibil(p, zi, dateZi, omPlanificat);
-                          const blocat = Boolean(motiv) && p.numeComplet !== omPlanificat;
-
-                          return (
-                            <option key={p.id} value={p.numeComplet} disabled={blocat}>
-                              {afiseazaNumeFrumos(p.numeComplet)}{motiv ? ` — indisponibil: ${motiv}` : ''}
-                            </option>
-                          );
-                        })}
+                        {filtrati.map(p => (
+                          <option key={p.id} value={p.numeComplet}>
+                            {afiseazaNumeFrumos(p.numeComplet)}
+                          </option>
+                        ))}
                       </select>
                     ) : (
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">

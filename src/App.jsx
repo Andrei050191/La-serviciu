@@ -15,6 +15,7 @@ import ServiciiPage from './ServiciiPage';
 import ConfigurareEfectiv from './ConfigurareEfectiv';
 import EfectivPage from './EfectivPage';
 import IstoricPage from './IstoricPage';
+import SetariServiciiPage from './SetariServiciiPage';
 
 const statusConfig = {
   "Prezent la serviciu": { color: "bg-green-600", icon: <Activity size={20} /> },
@@ -327,11 +328,12 @@ function App() {
     }
   };
 
-  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv', 'istoric'];
+  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'reguli', 'efectiv', 'setari', 'istoric'];
 
   const adminLabel = (p) => p
     .replace('categorii', 'sumar')
-    .replace('cantina', 'masă');
+    .replace('cantina', 'masă')
+    .replace('setari', 'setări');
 
   if (paginaCurenta === 'login') {
     return (
@@ -399,6 +401,7 @@ function App() {
             {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
             {paginaCurenta === 'reguli' && <ConfigurareEfectiv />}
             {paginaCurenta === 'efectiv' && <EfectivPage userLogat={userLogat} onLog={scrieIstoric} />}
+            {paginaCurenta === 'setari' && <SetariServiciiPage onLog={scrieIstoric} />}
             {paginaCurenta === 'istoric' && <IstoricPage />}
             
             {paginaCurenta === 'lista' && (
@@ -629,7 +632,7 @@ function App() {
 
       {userLogat?.rol === 'admin' && (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 p-2 md:hidden">
-          <div className="grid grid-cols-7 gap-1 max-w-4xl mx-auto">
+          <div className="grid grid-cols-4 gap-1 max-w-4xl mx-auto">
             {adminPages.map((p) => (
               <button
                 key={p}
