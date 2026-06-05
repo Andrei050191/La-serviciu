@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, serverTimestamp 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, serverTimestamp, where 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
   Stethoscope, CalendarDays, Utensils, Check, Lock, LogOut, 
-  Shield, X, ExternalLink, ChevronDown, ChevronUp, Search, FileText, Copy
+  Shield, X, ExternalLink, ChevronDown, ChevronUp, Search, FileText, Copy, Bell, CheckCheck
 } from 'lucide-react';
 
 import ServiciiPage from './ServiciiPage';
@@ -45,6 +45,7 @@ function App() {
   
   const [showConcediuSelect, setShowConcediuSelect] = useState(false);
   const [numarZileConcediu, setNumarZileConcediu] = useState(1);
+  const [notificari, setNotificari] = useState([]);
 
   // Funcție utilitară pentru vibrație
   const vibreaza = (ms = 40) => {
@@ -84,6 +85,51 @@ function App() {
         </span>
       </div>
     );
+  };
+
+
+  const numeCompletPentruNotificari = (m) => {
+    if (!m) return '';
+    return `${m.grad || ''} ${m.prenume || ''} ${m.nume || ''}`.trim().toUpperCase();
+  };
+
+  useEffect(() => {
+    if (userLogat?.rol !== 'user') {
+      setNotificari([]);
+      return;
+    }
+
+    const numeComplet = numeCompletPentruNotificari(userLogat);
+    if (!numeComplet) return;
+
+    const q = query(
+      collection(db, "notificari"),
+      where("userNumeComplet", "==", numeComplet),
+      where("citit", "==", false)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      lista.sort((a, b) => {
+        const da = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.dataClient || 0).getTime();
+        const dbb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.dataClient || 0).getTime();
+        return dbb - da;
+      });
+      setNotificari(lista);
+    });
+
+    return () => unsub();
+  }, [userLogat?.id, userLogat?.rol]);
+
+  const marcheazaNotificareCitita = async (id) => {
+    await updateDoc(doc(db, "notificari", id), {
+      citit: true,
+      cititLa: serverTimestamp()
+    });
+  };
+
+  const marcheazaToateNotificarileCitite = async () => {
+    await Promise.all(notificari.map(n => marcheazaNotificareCitita(n.id)));
   };
 
   useEffect(() => {
@@ -379,6 +425,45 @@ function App() {
             </button>
           ))}
         </div>
+
+
+        {userLogat?.rol === 'user' && notificari.length > 0 && (
+          <div className="mb-4 bg-blue-950/30 border border-blue-700/50 rounded-[2rem] p-4 shadow-xl">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-600 p-2.5 rounded-2xl text-white">
+                  <Bell size={18} />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase text-blue-200 tracking-widest">Notificări noi</p>
+                  <p className="text-[10px] text-slate-400 font-bold">Modificări la servicii</p>
+                </div>
+              </div>
+              <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black text-white">{notificari.length}</span>
+            </div>
+
+            <div className="space-y-2">
+              {notificari.slice(0, 3).map((n) => (
+                <div key={n.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-3">
+                  <p className="text-sm font-black text-white leading-snug">{n.mesaj}</p>
+                  {(n.functie || n.dataServiciu) && (
+                    <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
+                      {[n.functie, n.dataServiciu].filter(Boolean).join(' • ')}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={marcheazaToateNotificarileCitite}
+              className="mt-3 w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all rounded-2xl p-3 font-black uppercase text-xs flex items-center justify-center gap-2"
+            >
+              <CheckCheck size={16} />
+              Am înțeles
+            </button>
+          </div>
+        )}
 
         <div className="space-y-3 mb-8">
           {userLogat?.rol === 'user' && (

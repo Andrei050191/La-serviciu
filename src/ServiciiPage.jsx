@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
-import { doc, onSnapshot, collection, query, orderBy, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, setDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Shield, User, Users } from 'lucide-react';
 import { format, addDays, parse } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -168,6 +168,26 @@ const ServiciiPage = ({ editabil }) => {
     return "";
   };
 
+
+  const trimiteNotificareServiciu = async ({ userNumeComplet, mesaj, tip, functie, dataServiciu }) => {
+    if (!userNumeComplet || userNumeComplet === "Din altă subunitate") return;
+
+    try {
+      await addDoc(collection(db, "notificari"), {
+        userNumeComplet,
+        mesaj,
+        tip,
+        functie,
+        dataServiciu,
+        citit: false,
+        dataClient: new Date().toISOString(),
+        createdAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.warn("Nu am putut trimite notificarea:", e);
+    }
+  };
+
   const handleSchimbare = async (zi, index, valoare) => {
     const indexCalendar = pozitieCalendar(index);
     const nouCalendar = JSON.parse(JSON.stringify(calendar || {}));
@@ -228,6 +248,28 @@ const ServiciiPage = ({ editabil }) => {
 
     nouCalendar[zi.key].oameni[indexCalendar] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
+
+    if (valoare !== vechiulOmNume) {
+      if (valoare && valoare !== "Din altă subunitate") {
+        await trimiteNotificareServiciu({
+          userNumeComplet: valoare,
+          mesaj: `Ai fost pus la serviciu: ${functiaCurenta}, ${zi.key}.`,
+          tip: "serviciu_adaugat",
+          functie: functiaCurenta,
+          dataServiciu: zi.key
+        });
+      }
+
+      if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate") {
+        await trimiteNotificareServiciu({
+          userNumeComplet: vechiulOmNume,
+          mesaj: `Ai fost scos din serviciu: ${functiaCurenta}, ${zi.key}.`,
+          tip: "serviciu_scos",
+          functie: functiaCurenta,
+          dataServiciu: zi.key
+        });
+      }
+    }
   };
 
   if (loading) return <div className="p-10 text-center text-white opacity-50 font-black tracking-[0.2em]">SE ÎNCARCĂ...</div>;
