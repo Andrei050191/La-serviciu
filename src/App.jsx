@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc 
+  collection, onSnapshot, doc, updateDoc, query, orderBy 
 } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
@@ -34,9 +34,6 @@ function App() {
   const [inputCod, setInputCod] = useState("");
   const [eroareLogin, setEroareLogin] = useState(false);
   const [membruEditat, setMembruEditat] = useState(null);
-  const [indicatii, setIndicatii] = useState("");
-  const [editIndicatii, setEditIndicatii] = useState(false);
-  const [mesajNou, setMesajNou] = useState(false);
   const [cautareLista, setCautareLista] = useState('');
   const [cautareCantina, setCautareCantina] = useState('');
   const [raportDeschis, setRaportDeschis] = useState(false);
@@ -108,17 +105,6 @@ function App() {
       setEchipa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.activ !== false));
     });
     return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, "setari", "indicatii"), (docSnap) => {
-      if (docSnap.exists()) { 
-        setIndicatii(docSnap.data().text); 
-        setMesajNou(true); 
-        setTimeout(() => setMesajNou(false), 8000); 
-      }
-    });
-    return () => unsub();
   }, []);
 
   const login = (cod) => {
@@ -350,22 +336,6 @@ function App() {
         </div>
 
         <div className="space-y-3 mb-8">
-          <div className={`p-5 rounded-[2rem] border-2 transition-all ${mesajNou ? 'border-red-500 bg-red-950/30' : 'border-slate-800 bg-slate-900'}`}>
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Indicații Comandant</span>
-              {userLogat?.rol === 'admin' && (
-                <button onClick={async () => { vibreaza(30); if (editIndicatii) { await setDoc(doc(db, "setari", "indicatii"), { text: indicatii }); } setEditIndicatii(!editIndicatii); }} 
-                  className="text-[9px] font-black uppercase px-4 py-1.5 rounded-full bg-blue-600 text-white">{editIndicatii ? 'Gata' : 'Modifică'}</button>
-              )}
-            </div>
-            {!editIndicatii ? (
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-sm font-bold text-white whitespace-pre-wrap">{indicatii || "Nu sunt indicații noi."}</p></div>
-            ) : (
-              <textarea className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-blue-500 min-h-[120px]"
-                value={indicatii} onChange={(e) => setIndicatii(e.target.value)} autoFocus />
-            )}
-          </div>
-
           {userLogat?.rol === 'user' && (
             <button onClick={() => { vibreaza(40); setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii'); }} 
               className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl active:scale-[0.98] transition-all">
