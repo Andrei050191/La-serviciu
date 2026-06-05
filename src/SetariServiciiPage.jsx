@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical } from 'lucide-react';
 import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
 
 const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
@@ -193,15 +193,6 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
     }
   };
 
-  const mutaServiciuCuButon = async (id, directie) => {
-    const active = serviciiActive;
-    const index = active.findIndex(s => s.id === id);
-    const indexNou = directie === 'sus' ? index - 1 : index + 1;
-
-    if (index === -1 || indexNou < 0 || indexNou >= active.length) return;
-
-    await reordoneazaServicii(id, active[indexNou].id);
-  };
 
   if (loading) {
     return <div className="p-10 text-center text-white opacity-50 font-black tracking-[0.2em]">SE ÎNCARCĂ...</div>;
@@ -222,7 +213,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
 
         <div className="bg-slate-950 border border-slate-800 rounded-[2rem] p-4 mb-5">
           <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">Gestionare servicii</p>
-          <p className="text-[10px] text-slate-500 font-bold mb-3">Ține apăsat pe mâner și trage serviciul unde vrei. Pe telefon poți folosi și săgețile sus/jos.</p>
+          <p className="text-[10px] text-slate-500 font-bold mb-3">Ține apăsat pe mâner și trage serviciul unde vrei.</p>
 
           <div className="flex gap-2 mb-4">
             <input
@@ -280,8 +271,6 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
                     </>
                   ) : (
                     <>
-                      <button onClick={() => mutaServiciuCuButon(serviciu.id, 'sus')} className="bg-slate-800 p-3 rounded-xl active:scale-95" title="Mută mai sus"><ArrowUp size={15} /></button>
-                      <button onClick={() => mutaServiciuCuButon(serviciu.id, 'jos')} className="bg-slate-800 p-3 rounded-xl active:scale-95" title="Mută mai jos"><ArrowDown size={15} /></button>
                       <button onClick={() => incepeEditare(serviciu)} className="bg-slate-800 p-3 rounded-xl active:scale-95"><Pencil size={15} /></button>
                       <button onClick={() => stergeServiciu(serviciu)} className="bg-red-600/20 text-red-300 border border-red-700 p-3 rounded-xl active:scale-95"><Trash2 size={15} /></button>
                     </>
