@@ -329,7 +329,7 @@ function App() {
     }
   };
 
-  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'luna', 'reguli', 'efectiv', 'setari'];
+  const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'setari'];
 
   const adminLabel = (p) => p
     .replace('categorii', 'sumar')
@@ -404,7 +404,15 @@ function App() {
             {paginaCurenta === 'luna' && <EfectivLunaPage />}
             {paginaCurenta === 'reguli' && <ConfigurareEfectiv />}
             {paginaCurenta === 'efectiv' && <EfectivPage userLogat={userLogat} onLog={scrieIstoric} />}
-            {paginaCurenta === 'setari' && <SetariServiciiPage onLog={scrieIstoric} onOpenIstoric={() => setPaginaCurenta('istoric')} />}
+            {paginaCurenta === 'setari' && (
+              <SetariServiciiPage
+                onLog={scrieIstoric}
+                onOpenIstoric={() => setPaginaCurenta('istoric')}
+                onOpenLuna={() => setPaginaCurenta('luna')}
+                onOpenReguli={() => setPaginaCurenta('reguli')}
+                onOpenEfectiv={() => setPaginaCurenta('efectiv')}
+              />
+            )}
             {paginaCurenta === 'istoric' && <IstoricPage />}
             
             {paginaCurenta === 'lista' && (
@@ -615,13 +623,13 @@ function App() {
       </div>
 
       {userLogat?.rol === 'admin' && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-3 py-1 md:hidden">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-2 py-1 md:hidden">
           <div className="grid grid-cols-4 gap-1 max-w-4xl mx-auto">
             {adminPages.map((p) => (
               <button
                 key={p}
                 onClick={() => { vibreaza(25); setPaginaCurenta(p); }}
-                className={`py-3 px-1 rounded-xl font-black text-[9px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-500'}`}
+                className={`py-2 px-1 rounded-xl font-black text-[9px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-500'}`}
               >
                 {adminLabel(p)}
               </button>

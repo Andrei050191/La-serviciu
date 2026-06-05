@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical, CalendarDays, ShieldAlert, Users } from 'lucide-react';
 import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
 
-const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
+const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, onOpenEfectiv }) => {
   const [serviciiZilnic, setServiciiZilnic] = useState({});
   const [serviciiConfigurate, setServiciiConfigurate] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,6 +13,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
   const [editId, setEditId] = useState(null);
   const [editNume, setEditNume] = useState('');
   const [dragId, setDragId] = useState(null);
+  const [sectiune, setSectiune] = useState(null);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "setari", "servicii"), (snap) => {
@@ -198,29 +199,81 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
     return <div className="p-10 text-center text-white opacity-50 font-black tracking-[0.2em]">SE ÎNCARCĂ...</div>;
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 shadow-xl">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="bg-blue-600 p-3 rounded-2xl">
-            <Settings size={24} />
+  const butonMeniu = (titlu, descriere, icon, onClick) => (
+    <button
+      onClick={onClick}
+      className="w-full bg-slate-950 border border-slate-800 hover:bg-slate-800 active:scale-[0.98] transition-all rounded-[2rem] p-5 flex items-center justify-between gap-4 text-left"
+    >
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="bg-blue-600 p-3 rounded-2xl text-white shrink-0">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-black uppercase text-white truncate">{titlu}</p>
+          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 leading-relaxed">{descriere}</p>
+        </div>
+      </div>
+      <span className="text-slate-600 font-black text-lg">›</span>
+    </button>
+  );
+
+  const butonInapoi = (
+    <button
+      onClick={() => setSectiune(null)}
+      className="mb-4 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-[10px] font-black uppercase text-slate-300 active:scale-95"
+    >
+      Înapoi la setări
+    </button>
+  );
+
+  if (!sectiune) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-5 shadow-xl">
+          <div className="flex items-center gap-4 mb-5">
+            <div className="bg-blue-600 p-3 rounded-2xl">
+              <Settings size={24} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black uppercase">Setări</h2>
+              <p className="text-xs text-slate-400 font-bold">Aici rămân doar butoanele principale</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-black uppercase">Setări servicii</h2>
-            <p className="text-xs text-slate-400 font-bold">Activezi separat ce funcții permit aceeași persoană în zile consecutive</p>
+
+          <div className="grid grid-cols-1 gap-3">
+            {butonMeniu('Setări servicii', 'Permite sau oprește serviciu în zile consecutive', <Settings size={22} />, () => setSectiune('setari_servicii'))}
+            {butonMeniu('Gestionare servicii', 'Adaugă, modifică, șterge și schimbă ordinea', <GripVertical size={22} />, () => setSectiune('gestionare_servicii'))}
+            {onOpenIstoric && butonMeniu('Istoric modificări', 'Vezi ultimele modificări făcute în aplicație', <History size={22} />, onOpenIstoric)}
+            {onOpenLuna && butonMeniu('Luna', 'Tabel lunar cu servicii și statusuri', <CalendarDays size={22} />, onOpenLuna)}
+            {onOpenReguli && butonMeniu('Reguli', 'Cine are voie pe fiecare serviciu', <ShieldAlert size={22} />, onOpenReguli)}
+            {onOpenEfectiv && butonMeniu('Efectiv', 'Adaugă, modifică sau dezactivează persoane', <Users size={22} />, onOpenEfectiv)}
           </div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="bg-slate-950 border border-slate-800 rounded-[2rem] p-4 mb-5">
-          <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">Gestionare servicii</p>
-          <p className="text-[10px] text-slate-500 font-bold mb-3">Ține apăsat pe mâner și trage serviciul unde vrei.</p>
+  if (sectiune === 'gestionare_servicii') {
+    return (
+      <div className="space-y-4">
+        {butonInapoi}
+        <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-5 shadow-xl">
+          <div className="flex items-center gap-4 mb-5">
+            <div className="bg-blue-600 p-3 rounded-2xl">
+              <GripVertical size={24} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black uppercase">Gestionare servicii</h2>
+              <p className="text-xs text-slate-400 font-bold">Ține apăsat pe mâner și trage serviciul unde vrei</p>
+            </div>
+          </div>
 
           <div className="flex gap-2 mb-4">
             <input
               value={serviciuNou}
               onChange={(e) => setServiciuNou(e.target.value)}
               placeholder="Adaugă serviciu nou..."
-              className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-500"
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-500"
             />
             <button
               onClick={adaugaServiciu}
@@ -239,7 +292,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => reordoneazaServicii(dragId, serviciu.id)}
                 onDragEnd={() => setDragId(null)}
-                className={`bg-slate-900 border rounded-2xl p-3 flex items-center justify-between gap-2 transition-all ${dragId === serviciu.id ? 'border-blue-500 opacity-60 scale-[0.99]' : 'border-slate-800'}`}
+                className={`bg-slate-950 border rounded-2xl p-3 flex items-center justify-between gap-2 transition-all ${dragId === serviciu.id ? 'border-blue-500 opacity-60 scale-[0.99]' : 'border-slate-800'}`}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {editId !== serviciu.id && (
@@ -252,7 +305,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
                     <input
                       value={editNume}
                       onChange={(e) => setEditNume(e.target.value)}
-                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white outline-none focus:border-blue-500"
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white outline-none focus:border-blue-500"
                       autoFocus
                     />
                   ) : (
@@ -280,55 +333,66 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
             ))}
           </div>
         </div>
-
-        <div className="space-y-3">
-          {serviciiActive.map((serviciu) => {
-            const functie = serviciu.nume;
-            const activ = serviciiZilnic[functie] === true;
-
-            return (
-              <div key={serviciu.id} className="bg-slate-950 border border-slate-800 rounded-[2rem] p-5 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-black uppercase text-white">{functie}</p>
-                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    {activ
-                      ? 'Aceeași persoană poate fi pusă la acest serviciu în zile consecutive.'
-                      : 'Se aplică regula normală: persoana nu poate fi pusă în ziua precedentă sau următoare.'}
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => schimbaServiciu(functie)}
-                  disabled={salvare}
-                  className={`shrink-0 px-4 py-3 rounded-2xl font-black text-xs uppercase flex items-center gap-2 active:scale-95 transition-all ${activ ? 'bg-green-600 text-white' : 'bg-slate-800 text-slate-300'}`}
-                >
-                  {activ ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                  {activ ? 'Activ' : 'Oprit'}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-4 bg-blue-950/20 border border-blue-900/40 rounded-2xl p-4 flex gap-3 text-xs text-blue-200 leading-relaxed">
-          <Save size={18} className="shrink-0 mt-0.5" />
-          <p>
-            Setările se salvează în Firebase. Serviciile șterse nu se mai afișează, dar pozițiile vechi rămân păstrate ca să nu se încurce planificările existente.
-          </p>
-        </div>
-
-        {onOpenIstoric && (
-          <button
-            onClick={onOpenIstoric}
-            className="mt-4 w-full bg-slate-950 border border-slate-700 hover:bg-slate-800 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2 text-slate-200"
-          >
-            <History size={18} />
-            Istoric modificări
-          </button>
-        )}
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (sectiune === 'setari_servicii') {
+    return (
+      <div className="space-y-4">
+        {butonInapoi}
+        <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-5 shadow-xl">
+          <div className="flex items-center gap-4 mb-5">
+            <div className="bg-blue-600 p-3 rounded-2xl">
+              <Settings size={24} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black uppercase">Setări servicii</h2>
+              <p className="text-xs text-slate-400 font-bold">Activezi separat ce funcții permit aceeași persoană în zile consecutive</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {serviciiActive.map((serviciu) => {
+              const functie = serviciu.nume;
+              const activ = serviciiZilnic[functie] === true;
+
+              return (
+                <div key={serviciu.id} className="bg-slate-950 border border-slate-800 rounded-[2rem] p-5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-black uppercase text-white">{functie}</p>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                      {activ
+                        ? 'Aceeași persoană poate fi pusă la acest serviciu în zile consecutive.'
+                        : 'Se aplică regula normală: persoana nu poate fi pusă în ziua precedentă sau următoare.'}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => schimbaServiciu(functie)}
+                    disabled={salvare}
+                    className={`shrink-0 px-4 py-3 rounded-2xl font-black text-xs uppercase flex items-center gap-2 active:scale-95 transition-all ${activ ? 'bg-green-600 text-white' : 'bg-slate-800 text-slate-300'}`}
+                  >
+                    {activ ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                    {activ ? 'Activ' : 'Oprit'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 bg-blue-950/20 border border-blue-900/40 rounded-2xl p-4 flex gap-3 text-xs text-blue-200 leading-relaxed">
+            <Save size={18} className="shrink-0 mt-0.5" />
+            <p>
+              Setările se salvează în Firebase. Pentru funcțiile activate, aceeași persoană poate fi planificată în zile consecutive doar la funcția respectivă.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };
 
 export default SetariServiciiPage;
