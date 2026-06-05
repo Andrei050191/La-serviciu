@@ -1,18 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, collection, query, orderBy, setDoc, updateDoc } from 'firebase/firestore';
 import { Shield, User, Users } from 'lucide-react';
 import { format, addDays, parse } from 'date-fns';
 import { ro } from 'date-fns/locale';
+import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
 
 const ServiciiPage = ({ editabil }) => {
   const [calendar, setCalendar] = useState({});
   const [personal, setPersonal] = useState([]);
   const [reguli, setReguli] = useState({});
   const [setariServicii, setSetariServicii] = useState({ serviciiZilnic: {}, operatorRadioZilnic: false });
+  const [serviciiConfigurate, setServiciiConfigurate] = useState(normalizeServiciiConfigurate([]));
   const [loading, setLoading] = useState(true);
 
-  const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
+  const serviciiActive = useMemo(() => normalizeServiciiConfigurate(serviciiConfigurate).filter(s => s.activ !== false), [serviciiConfigurate]);
+  const functii = useMemo(() => serviciiActive.map(s => s.nume), [serviciiActive]);
+  const totalPozitiiServicii = useMemo(() => pozitieMaximaServicii(serviciiConfigurate), [serviciiConfigurate]);
+  const pozitieCalendar = (indexAfisat) => serviciiActive[indexAfisat]?.pozitie ?? indexAfisat;
 
   // AUTO-CURĂȚARE ZILE VECHI - REPARAT SINTAXĂ
   useEffect(() => {
@@ -103,6 +108,9 @@ const ServiciiPage = ({ editabil }) => {
           serviciiZilnic,
           operatorRadioZilnic: serviciiZilnic["Operator radio"] === true
         });
+        setServiciiConfigurate(normalizeServiciiConfigurate(data.serviciiConfigurate));
+      } else {
+        setServiciiConfigurate(normalizeServiciiConfigurate([]));
       }
     });
 
@@ -121,6 +129,7 @@ const ServiciiPage = ({ editabil }) => {
   };
 
   const getMotivIndisponibil = (persoana, zi, indexFunctie, omPlanificat) => {
+    const indexCalendar = pozitieCalendar(indexFunctie);
     if (!persoana) return "persoană indisponibilă";
     if (persoana.numeComplet === omPlanificat) return "";
     if (persoana.activ === false) return "inactiv";
@@ -135,8 +144,8 @@ const ServiciiPage = ({ editabil }) => {
     const functieCurenta = functii[indexFunctie];
     const zilnicActiv = serviciuZilnicActivPentru(functieCurenta);
 
-    const esteDejaAzi = oameniAzi.some((om, i) => i !== indexFunctie && om === persoana.numeComplet);
-    if (esteDejaAzi) return "serviciu azi";
+    const esteDejaAzi = oameniAzi.some((om, i) => i !== indexCalendar && om === persoana.numeComplet);
+    if (esteDejaAzi) return "deja azi";
 
     // Dacă nu are status setat pentru ziua aleasă, îl tratăm ca „Prezent la serviciu”.
     // Când switch-ul este ACTIV pentru funcția curentă, permitem aceeași persoană în zile consecutive,
@@ -160,17 +169,18 @@ const ServiciiPage = ({ editabil }) => {
   };
 
   const handleSchimbare = async (zi, index, valoare) => {
+    const indexCalendar = pozitieCalendar(index);
     const nouCalendar = JSON.parse(JSON.stringify(calendar || {}));
     
     // REPARAȚIE: Verificăm dacă ziua are array-ul de oameni, dacă nu, îl creăm
     if (!nouCalendar[zi.key] || !nouCalendar[zi.key].oameni) {
         nouCalendar[zi.key] = { 
-            oameni: Array(functii.length).fill("Din altă subunitate"), 
+            oameni: Array(totalPozitiiServicii).fill("Din altă subunitate"), 
             mod: nouCalendar[zi.key]?.mod || "2" 
         };
     }
 
-    const vechiulOmNume = nouCalendar[zi.key].oameni[index];
+    const vechiulOmNume = nouCalendar[zi.key].oameni[indexCalendar];
     const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
     
     const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
@@ -216,7 +226,7 @@ const ServiciiPage = ({ editabil }) => {
       }
     }
 
-    nouCalendar[zi.key].oameni[index] = valoare;
+    nouCalendar[zi.key].oameni[indexCalendar] = valoare;
     await setDoc(doc(db, "servicii", "calendar"), { data: nouCalendar });
   };
 
@@ -229,7 +239,7 @@ const ServiciiPage = ({ editabil }) => {
         const dateZiIncompleta = calendar[zi.key] || {};
         const dateZi = {
           mod: dateZiIncompleta.mod || "2",
-          oameni: dateZiIncompleta.oameni || Array(functii.length).fill("Din altă subunitate")
+          oameni: dateZiIncompleta.oameni || Array(totalPozitiiServicii).fill("Din altă subunitate")
         };
         
         const esteAzi = zi.key === format(new Date(), 'dd.MM.yyyy');
@@ -255,9 +265,11 @@ const ServiciiPage = ({ editabil }) => {
             </div>
 
             <div className="p-4 space-y-4">
-              {functii.map((f, idx) => {
+              {serviciiActive.map((serviciu, idx) => {
+                const f = serviciu.nume;
+                const indexCalendar = serviciu.pozitie;
                 if (dateZi.mod === "1" && f === "Intervenția 2") return null;
-                const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
+                const omPlanificat = dateZi.oameni[indexCalendar] || "Din altă subunitate";
                 const listaE = reguli[f] || [];
                 const filtrati = (listaE.length > 0) ? personal.filter(p => listaE.includes(p.numeComplet)) : personal;
                 const zilnicActiv = serviciuZilnicActivPentru(f);

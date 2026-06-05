@@ -4,17 +4,7 @@ import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { addMonths, eachDayOfInterval, endOfMonth, format, isToday, startOfMonth, subMonths } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { CalendarDays, ChevronLeft, ChevronRight, Copy, UserCheck } from 'lucide-react';
-
-const functii = [
-  'Ajutor OSU',
-  'Sergent de serviciu PCT',
-  'Planton',
-  'Patrulă',
-  'Operator radio',
-  'Intervenția 1',
-  'Intervenția 2',
-  'Responsabil'
-];
+import { normalizeServiciiConfigurate } from './serviciiConfig';
 
 const prescurtari = {
   'Ajutor OSU': 'A.OSU',
@@ -53,7 +43,10 @@ const statusCulori = {
 const EfectivLunaPage = () => {
   const [personal, setPersonal] = useState([]);
   const [calendar, setCalendar] = useState({});
+  const [serviciiConfigurate, setServiciiConfigurate] = useState(normalizeServiciiConfigurate([]));
   const [lunaCurenta, setLunaCurenta] = useState(startOfMonth(new Date()));
+
+  const serviciiActive = useMemo(() => normalizeServiciiConfigurate(serviciiConfigurate).filter(s => s.activ !== false), [serviciiConfigurate]);
 
   useEffect(() => {
     const q = query(collection(db, 'echipa'), orderBy('ordine', 'asc'));
@@ -69,9 +62,14 @@ const EfectivLunaPage = () => {
       setCalendar(snap.exists() ? (snap.data().data || {}) : {});
     });
 
+    const unsubServicii = onSnapshot(doc(db, 'setari', 'servicii'), (snap) => {
+      setServiciiConfigurate(normalizeServiciiConfigurate(snap.exists() ? snap.data().serviciiConfigurate : []));
+    });
+
     return () => {
       unsubPers();
       unsubCal();
+      unsubServicii();
     };
   }, []);
 
@@ -99,8 +97,8 @@ const EfectivLunaPage = () => {
     const key = format(data, 'dd.MM.yyyy');
     const oameni = calendar[key]?.oameni || [];
 
-    return oameni
-      .map((om, index) => om === persoana.numeComplet ? functii[index] : null)
+    return serviciiActive
+      .map((serviciu) => oameni[serviciu.pozitie] === persoana.numeComplet ? serviciu.nume : null)
       .filter(Boolean);
   };
 

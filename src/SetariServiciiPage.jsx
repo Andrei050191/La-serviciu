@@ -1,23 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Settings, ToggleLeft, ToggleRight, Save, History } from 'lucide-react';
-
-const functiiServicii = [
-  'Ajutor OSU',
-  'Sergent de serviciu PCT',
-  'Planton',
-  'Patrulă',
-  'Operator radio',
-  'Intervenția 1',
-  'Intervenția 2',
-  'Responsabil'
-];
+import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X } from 'lucide-react';
+import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
 
 const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
   const [serviciiZilnic, setServiciiZilnic] = useState({});
+  const [serviciiConfigurate, setServiciiConfigurate] = useState([]);
   const [loading, setLoading] = useState(true);
   const [salvare, setSalvare] = useState(false);
+  const [serviciuNou, setServiciuNou] = useState('');
+  const [editId, setEditId] = useState(null);
+  const [editNume, setEditNume] = useState('');
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "setari", "servicii"), (snap) => {
@@ -25,18 +19,33 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
         const data = snap.data();
         const valori = { ...(data.serviciiZilnic || {}) };
 
-        // compatibilitate cu setarea veche pentru Operator radio
         if (data.operatorRadioZilnic === true) {
           valori["Operator radio"] = true;
         }
 
         setServiciiZilnic(valori);
+        setServiciiConfigurate(normalizeServiciiConfigurate(data.serviciiConfigurate));
+      } else {
+        setServiciiConfigurate(normalizeServiciiConfigurate([]));
       }
       setLoading(false);
     });
 
     return () => unsub();
   }, []);
+
+  const serviciiActive = useMemo(() => {
+    return normalizeServiciiConfigurate(serviciiConfigurate).filter(s => s.activ !== false);
+  }, [serviciiConfigurate]);
+
+  const salveazaConfig = async (listaNoua, serviciiZilnicNou = serviciiZilnic) => {
+    const listaNormalizata = normalizeServiciiConfigurate(listaNoua);
+    await setDoc(doc(db, "setari", "servicii"), {
+      serviciiConfigurate: listaNormalizata,
+      serviciiZilnic: serviciiZilnicNou,
+      operatorRadioZilnic: serviciiZilnicNou["Operator radio"] === true
+    }, { merge: true });
+  };
 
   const schimbaServiciu = async (functie) => {
     const valoareNoua = !(serviciiZilnic[functie] === true);
@@ -46,11 +55,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
     setSalvare(true);
 
     try {
-      await setDoc(doc(db, "setari", "servicii"), {
-        serviciiZilnic: serviciiNoi,
-        // păstrăm și câmpul vechi ca să nu se strice nimic dacă există cod vechi
-        operatorRadioZilnic: serviciiNoi["Operator radio"] === true
-      }, { merge: true });
+      await salveazaConfig(serviciiConfigurate, serviciiNoi);
 
       if (onLog) {
         await onLog("Setare servicii", {
@@ -64,6 +69,86 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
       setServiciiZilnic(serviciiZilnic);
     } finally {
       setSalvare(false);
+    }
+  };
+
+  const adaugaServiciu = async () => {
+    const nume = serviciuNou.trim();
+    if (!nume) return;
+
+    const exista = normalizeServiciiConfigurate(serviciiConfigurate)
+      .some(s => s.nume.toLowerCase() === nume.toLowerCase() && s.activ !== false);
+
+    if (exista) {
+      alert('Serviciul acesta există deja.');
+      return;
+    }
+
+    const lista = normalizeServiciiConfigurate(serviciiConfigurate);
+    const pozitie = pozitieMaximaServicii(lista);
+    const serviciu = {
+      id: `serviciu_${Date.now()}`,
+      nume,
+      pozitie,
+      activ: true
+    };
+
+    const listaNoua = [...lista, serviciu];
+    setServiciiConfigurate(listaNoua);
+    setServiciuNou('');
+    await salveazaConfig(listaNoua);
+
+    if (onLog) {
+      await onLog('Adăugare serviciu', { serviciu: nume }, null);
+    }
+  };
+
+  const incepeEditare = (serviciu) => {
+    setEditId(serviciu.id);
+    setEditNume(serviciu.nume);
+  };
+
+  const salveazaEditare = async () => {
+    const nume = editNume.trim();
+    if (!nume || !editId) return;
+
+    const lista = normalizeServiciiConfigurate(serviciiConfigurate);
+    const vechi = lista.find(s => s.id === editId);
+
+    const listaNoua = lista.map(s => s.id === editId ? { ...s, nume } : s);
+
+    const serviciiZilnicNou = { ...serviciiZilnic };
+    if (vechi && vechi.nume !== nume && serviciiZilnicNou[vechi.nume] !== undefined) {
+      serviciiZilnicNou[nume] = serviciiZilnicNou[vechi.nume];
+      delete serviciiZilnicNou[vechi.nume];
+    }
+
+    setServiciiConfigurate(listaNoua);
+    setServiciiZilnic(serviciiZilnicNou);
+    setEditId(null);
+    setEditNume('');
+    await salveazaConfig(listaNoua, serviciiZilnicNou);
+
+    if (onLog) {
+      await onLog('Modificare serviciu', { inainte: vechi?.nume || '', dupa: nume }, null);
+    }
+  };
+
+  const stergeServiciu = async (serviciu) => {
+    const ok = window.confirm(`Sigur vrei să ștergi serviciul „${serviciu.nume}”?\n\nPlanificările vechi rămân în baza de date, dar serviciul nu se mai afișează în aplicație.`);
+    if (!ok) return;
+
+    const lista = normalizeServiciiConfigurate(serviciiConfigurate);
+    const listaNoua = lista.map(s => s.id === serviciu.id ? { ...s, activ: false } : s);
+    const serviciiZilnicNou = { ...serviciiZilnic };
+    delete serviciiZilnicNou[serviciu.nume];
+
+    setServiciiConfigurate(listaNoua);
+    setServiciiZilnic(serviciiZilnicNou);
+    await salveazaConfig(listaNoua, serviciiZilnicNou);
+
+    if (onLog) {
+      await onLog('Ștergere serviciu', { serviciu: serviciu.nume }, null);
     }
   };
 
@@ -84,12 +169,66 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
           </div>
         </div>
 
+        <div className="bg-slate-950 border border-slate-800 rounded-[2rem] p-4 mb-5">
+          <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-3">Gestionare servicii</p>
+
+          <div className="flex gap-2 mb-4">
+            <input
+              value={serviciuNou}
+              onChange={(e) => setServiciuNou(e.target.value)}
+              placeholder="Adaugă serviciu nou..."
+              className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={adaugaServiciu}
+              className="bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all rounded-2xl px-4 font-black text-xs uppercase flex items-center gap-2"
+            >
+              <Plus size={16} /> Adaugă
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {serviciiActive.map((serviciu) => (
+              <div key={serviciu.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-2">
+                {editId === serviciu.id ? (
+                  <input
+                    value={editNume}
+                    onChange={(e) => setEditNume(e.target.value)}
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white outline-none focus:border-blue-500"
+                    autoFocus
+                  />
+                ) : (
+                  <div>
+                    <p className="text-sm font-black text-white uppercase">{serviciu.nume}</p>
+                    <p className="text-[9px] text-slate-500 font-bold uppercase">Poziția {serviciu.pozitie + 1}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 shrink-0">
+                  {editId === serviciu.id ? (
+                    <>
+                      <button onClick={salveazaEditare} className="bg-green-600 p-3 rounded-xl active:scale-95"><Save size={15} /></button>
+                      <button onClick={() => { setEditId(null); setEditNume(''); }} className="bg-slate-800 p-3 rounded-xl active:scale-95"><X size={15} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => incepeEditare(serviciu)} className="bg-slate-800 p-3 rounded-xl active:scale-95"><Pencil size={15} /></button>
+                      <button onClick={() => stergeServiciu(serviciu)} className="bg-red-600/20 text-red-300 border border-red-700 p-3 rounded-xl active:scale-95"><Trash2 size={15} /></button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-3">
-          {functiiServicii.map((functie) => {
+          {serviciiActive.map((serviciu) => {
+            const functie = serviciu.nume;
             const activ = serviciiZilnic[functie] === true;
 
             return (
-              <div key={functie} className="bg-slate-950 border border-slate-800 rounded-[2rem] p-5 flex items-center justify-between gap-4">
+              <div key={serviciu.id} className="bg-slate-950 border border-slate-800 rounded-[2rem] p-5 flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-black uppercase text-white">{functie}</p>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">
@@ -115,17 +254,19 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric }) => {
         <div className="mt-4 bg-blue-950/20 border border-blue-900/40 rounded-2xl p-4 flex gap-3 text-xs text-blue-200 leading-relaxed">
           <Save size={18} className="shrink-0 mt-0.5" />
           <p>
-            Setările se salvează în Firebase. Pentru funcțiile activate, aceeași persoană poate fi planificată în zile consecutive doar la funcția respectivă.
+            Setările se salvează în Firebase. Serviciile șterse nu se mai afișează, dar pozițiile vechi rămân păstrate ca să nu se încurce planificările existente.
           </p>
         </div>
 
-        <button
-          onClick={onOpenIstoric}
-          className="mt-4 w-full bg-slate-950 border border-slate-700 hover:bg-slate-800 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2 text-slate-200"
-        >
-          <History size={18} />
-          Istoric modificări
-        </button>
+        {onOpenIstoric && (
+          <button
+            onClick={onOpenIstoric}
+            className="mt-4 w-full bg-slate-950 border border-slate-700 hover:bg-slate-800 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2 text-slate-200"
+          >
+            <History size={18} />
+            Istoric modificări
+          </button>
+        )}
       </div>
     </div>
   );

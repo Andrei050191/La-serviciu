@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc, collection, query, orderBy } from 'firebase/firestore';
 import { Check, ShieldAlert } from 'lucide-react';
+import { normalizeServiciiConfigurate } from './serviciiConfig';
 
 const ConfigurareEfectiv = () => {
   const [personal, setPersonal] = useState([]);
   const [reguli, setReguli] = useState({});
   const [functieSelectata, setFunctieSelectata] = useState("Ajutor OSU");
+  const [serviciiConfigurate, setServiciiConfigurate] = useState(normalizeServiciiConfigurate([]));
 
-  const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
+  const functii = normalizeServiciiConfigurate(serviciiConfigurate).filter(s => s.activ !== false).map(s => s.nume);
 
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
@@ -18,7 +20,13 @@ const ConfigurareEfectiv = () => {
     const unsubReguli = onSnapshot(doc(db, "setari", "reguli_servicii"), (docSnap) => {
       if (docSnap.exists()) setReguli(docSnap.data());
     });
-    return () => { unsubPers(); unsubReguli(); };
+    const unsubServicii = onSnapshot(doc(db, "setari", "servicii"), (docSnap) => {
+      const lista = normalizeServiciiConfigurate(docSnap.exists() ? docSnap.data().serviciiConfigurate : []);
+      setServiciiConfigurate(lista);
+      const active = lista.filter(s => s.activ !== false).map(s => s.nume);
+      if (active.length && !active.includes(functieSelectata)) setFunctieSelectata(active[0]);
+    });
+    return () => { unsubPers(); unsubReguli(); unsubServicii(); };
   }, []);
 
   const togglePersoana = async (numeComplet) => {
