@@ -9,7 +9,7 @@ const ServiciiPage = ({ editabil }) => {
   const [calendar, setCalendar] = useState({});
   const [personal, setPersonal] = useState([]);
   const [reguli, setReguli] = useState({});
-  const [setariServicii, setSetariServicii] = useState({ operatorRadioZilnic: false });
+  const [setariServicii, setSetariServicii] = useState({ serviciiZilnic: {}, operatorRadioZilnic: false });
   const [loading, setLoading] = useState(true);
 
   const functii = ["Ajutor OSU", "Sergent de serviciu PCT", "Planton", "Patrulă", "Operator radio", "Intervenția 1", "Intervenția 2", "Responsabil"];
@@ -91,12 +91,57 @@ const ServiciiPage = ({ editabil }) => {
 
     const unsubSetari = onSnapshot(doc(db, "setari", "servicii"), (snap) => {
       if (snap.exists()) {
-        setSetariServicii({ operatorRadioZilnic: snap.data().operatorRadioZilnic === true });
+        const data = snap.data();
+        const serviciiZilnic = { ...(data.serviciiZilnic || {}) };
+
+        // compatibilitate cu setarea veche pentru Operator radio
+        if (data.operatorRadioZilnic === true) {
+          serviciiZilnic["Operator radio"] = true;
+        }
+
+        setSetariServicii({
+          serviciiZilnic,
+          operatorRadioZilnic: serviciiZilnic["Operator radio"] === true
+        });
       }
     });
 
     return () => { unsubPers(); unsubCal(); unsubReg(); unsubSetari(); };
   }, []);
+
+  const serviciuZilnicActivPentru = (functie) => {
+    return setariServicii.serviciiZilnic?.[functie] === true;
+  };
+
+  const getMotivIndisponibil = (persoana, zi, indexFunctie, omPlanificat) => {
+    if (!persoana) return "persoană indisponibilă";
+    if (persoana.numeComplet === omPlanificat) return "";
+    if (persoana.activ === false) return "inactiv";
+
+    const statusAzi = persoana[`status_${zi.ziFiltru}`];
+    if (statusAzi === "Concediu") return "concediu";
+    if (statusAzi === "Foaie de boala") return "foaie de boală";
+
+    const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
+    const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
+    const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
+
+    const oameniAzi = calendar[zi.key]?.oameni || [];
+    const oameniIeri = calendar[ieriKey]?.oameni || [];
+    const oameniMaine = calendar[maineKey]?.oameni || [];
+    const functieCurenta = functii[indexFunctie];
+    const zilnicActiv = serviciuZilnicActivPentru(functieCurenta);
+
+    const esteDejaAzi = oameniAzi.some((om, i) => i !== indexFunctie && om === persoana.numeComplet);
+    if (esteDejaAzi) return "deja azi";
+
+    if (!zilnicActiv) {
+      if (oameniIeri.includes(persoana.numeComplet)) return "serviciu ieri";
+      if (oameniMaine.includes(persoana.numeComplet)) return "serviciu mâine";
+    }
+
+    return "";
+  };
 
   const handleSchimbare = async (zi, index, valoare) => {
     const nouCalendar = JSON.parse(JSON.stringify(calendar || {}));
@@ -115,27 +160,17 @@ const ServiciiPage = ({ editabil }) => {
     const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
     const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
     
-    const oameniIeri = calendar[ieriKey]?.oameni || [];
-    const oameniAzi = nouCalendar[zi.key].oameni || [];
     const oameniMaine = calendar[maineKey]?.oameni || [];
 
     const functiaCurenta = functii[index];
     const esteInterventie = functiaCurenta.includes("Intervenția");
-    const esteOperatorRadio = functiaCurenta === "Operator radio";
-    const operatorRadioZilnicActiv = setariServicii.operatorRadioZilnic === true;
-
     if (valoare !== "Din altă subunitate") {
-      const esteDejaAzi = oameniAzi.some((om, i) => i !== index && om === valoare);
-      if (esteDejaAzi) {
-        alert(`⚠️ ${valoare} este deja planificat azi!`);
-        return;
-      }
+      const omSelectat = personal.find(p => p.numeComplet === valoare);
+      const motiv = getMotivIndisponibil(omSelectat, zi, index, vechiulOmNume);
 
-      if (!(esteOperatorRadio && operatorRadioZilnicActiv)) {
-        if (oameniIeri.includes(valoare) || oameniMaine.includes(valoare)) {
-          alert(`⚠️ ${valoare} este planificat în ziua precedentă sau următoare!`);
-          return;
-        }
+      if (motiv) {
+        alert(`⚠️ ${afiseazaNumeFrumos(valoare)} nu poate fi planificat: ${motiv}.`);
+        return;
       }
     }
 
@@ -209,16 +244,18 @@ const ServiciiPage = ({ editabil }) => {
                 const omPlanificat = dateZi.oameni[idx] || "Din altă subunitate";
                 const listaE = reguli[f] || [];
                 const filtrati = (listaE.length > 0) ? personal.filter(p => listaE.includes(p.numeComplet)) : personal;
+                const zilnicActiv = serviciuZilnicActivPentru(f);
 
                 return (
                   <div key={f} className="flex flex-col gap-1">
                     <label className="text-[12px] font-black text-slate-200 uppercase ml-2 tracking-tighter flex items-center gap-2">
                       {f}
-                      {f === "Operator radio" && setariServicii.operatorRadioZilnic === true && (
+                      {setariServicii.serviciiZilnic?.[f] === true && (
                         <span className="text-[9px] bg-green-600/20 text-green-300 border border-green-600/30 px-2 py-0.5 rounded-full">zilnic permis</span>
                       )}
                     </label>
                     {editabil ? (
+                      <>
                       <select 
                         value={omPlanificat} 
                         onChange={(e) => handleSchimbare(zi, idx, e.target.value)}
@@ -226,12 +263,21 @@ const ServiciiPage = ({ editabil }) => {
                         className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs font-black text-white outline-none focus:border-blue-500 appearance-none shadow-inner"
                       >
                         <option value="Din altă subunitate">Din altă subunitate</option>
-                        {filtrati.map(p => (
-                          <option key={p.id} value={p.numeComplet}>
-                            {afiseazaNumeFrumos(p.numeComplet)}
-                          </option>
-                        ))}
+                        {filtrati.map(p => {
+                          const motiv = getMotivIndisponibil(p, zi, idx, omPlanificat);
+                          return (
+                            <option key={p.id} value={p.numeComplet} disabled={!!motiv}>
+                              {afiseazaNumeFrumos(p.numeComplet)}{motiv ? ` — ${motiv}` : ''}
+                            </option>
+                          );
+                        })}
                       </select>
+                      <p className="text-[10px] text-slate-500 font-bold ml-2 mt-1">
+                        {zilnicActiv
+                          ? 'Regula pe zile consecutive este permisă pentru acest serviciu. Persoana tot nu poate fi dublată în aceeași zi.'
+                          : 'Nu poți selecta persoana dacă este deja azi, a fost ieri sau este planificată mâine.'}
+                      </p>
+                      </>
                     ) : (
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
                         <span style={{ fontSize: '18px' }} className="font-black text-white/90">
