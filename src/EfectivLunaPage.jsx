@@ -18,7 +18,7 @@ const functii = [
 
 const prescurtari = {
   'Ajutor OSU': 'A.OSU',
-  'Sergent de serviciu PCT': 'SGT',
+  'Sergent de serviciu PCT': 'PCT',
   'Planton': 'PL',
   'Patrulă': 'PAT',
   'Operator radio': 'RAD',
@@ -31,7 +31,7 @@ const prescurtari = {
 const statusPrescurtari = {
   'În serviciu': 'SERV',
   'După serviciu': 'DUPĂ',
-  'Zi liberă': 'LIB',
+  'Zi liberă': 'ZL',
   'Concediu': 'CONC',
   'Deplasare': 'DEPL',
   'Foaie de boala': 'BOALĂ',
