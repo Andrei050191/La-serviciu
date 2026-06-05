@@ -10,7 +10,7 @@ import {
   addDoc,
   deleteDoc
 } from 'firebase/firestore';
-import { Plus, Save, X, Pencil, UserCheck, UserX, Trash2 } from 'lucide-react';
+import { Plus, Save, X, Pencil, UserCheck, UserX, Trash2, GripVertical } from 'lucide-react';
 
 const formularGol = {
   grad: '',
@@ -26,6 +26,8 @@ const EfectivPage = ({ onLog }) => {
   const [formular, setFormular] = useState(formularGol);
   const [idEditare, setIdEditare] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [dragId, setDragId] = useState(null);
+  const [salvareOrdine, setSalvareOrdine] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
@@ -151,6 +153,43 @@ const EfectivPage = ({ onLog }) => {
     await deleteDoc(doc(db, "echipa", p.id));
   };
 
+
+  const reordoneazaEfectiv = async (idMutat, idTinta) => {
+    if (!idMutat || !idTinta || idMutat === idTinta || salvareOrdine) return;
+
+    const fromIndex = personal.findIndex(p => p.id === idMutat);
+    const toIndex = personal.findIndex(p => p.id === idTinta);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const listaNoua = [...personal];
+    const [mutat] = listaNoua.splice(fromIndex, 1);
+    listaNoua.splice(toIndex, 0, mutat);
+
+    const listaCuOrdine = listaNoua.map((p, index) => ({
+      ...p,
+      ordine: index + 1
+    }));
+
+    setPersonal(listaCuOrdine);
+    setDragId(null);
+    setSalvareOrdine(true);
+
+    try {
+      await Promise.all(listaCuOrdine.map(p =>
+        updateDoc(doc(db, "echipa", p.id), { ordine: p.ordine })
+      ));
+
+      await logLocal("Reordonare efectiv", {
+        ordine: listaCuOrdine.map(p => numePentruIstoric(p)).join(' > ')
+      }, null);
+    } catch (e) {
+      console.error(e);
+      alert("Nu am putut salva ordinea efectivului.");
+    } finally {
+      setSalvareOrdine(false);
+    }
+  };
+
   const formatGrad = (grad) => {
     if (!grad) return "";
 
@@ -179,7 +218,7 @@ const EfectivPage = ({ onLog }) => {
               Efectiv subunitate
             </h2>
             <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
-              Adaugă, modifică, dezactivează sau șterge persoane
+              Adaugă, modifică, dezactivează, șterge și schimbă ordinea
             </p>
           </div>
 
@@ -307,6 +346,10 @@ const EfectivPage = ({ onLog }) => {
           </div>
         )}
 
+        <div className="mb-3 bg-slate-950/70 border border-slate-800 rounded-2xl p-3 text-[10px] text-slate-400 font-bold uppercase leading-relaxed">
+          Ține apăsat pe mânerul din stânga și trage persoana mai sus sau mai jos. Ordinea se salvează automat.
+        </div>
+
         <div className="grid grid-cols-1 gap-3">
           {personal.map(p => {
             const activ = p.activ !== false;
@@ -314,13 +357,25 @@ const EfectivPage = ({ onLog }) => {
             return (
               <div
                 key={p.id}
-                className={`p-4 rounded-2xl border-2 flex justify-between items-center gap-3 ${
-                  activ
-                    ? 'bg-slate-950 border-slate-800'
-                    : 'bg-red-950/20 border-red-900/50 opacity-60'
+                draggable={!salvareOrdine}
+                onDragStart={() => setDragId(p.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => reordoneazaEfectiv(dragId, p.id)}
+                onDragEnd={() => setDragId(null)}
+                className={`p-4 rounded-2xl border-2 flex justify-between items-center gap-3 transition-all ${
+                  dragId === p.id
+                    ? 'border-blue-500 opacity-60 scale-[0.99]'
+                    : activ
+                      ? 'bg-slate-950 border-slate-800'
+                      : 'bg-red-950/20 border-red-900/50 opacity-60'
                 }`}
               >
-                <div className="text-left min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="text-slate-500 cursor-grab active:cursor-grabbing p-1 shrink-0" title="Trage pentru a schimba ordinea">
+                    <GripVertical size={18} />
+                  </div>
+
+                  <div className="text-left min-w-0">
                   <p className="text-[9px] font-black text-blue-400 leading-none mb-1">
                     {formatGrad(p.grad)}
                   </p>
@@ -345,6 +400,7 @@ const EfectivPage = ({ onLog }) => {
                     }`}>
                       {activ ? "Activ" : "Inactiv"}
                     </span>
+                  </div>
                   </div>
                 </div>
 

@@ -337,6 +337,9 @@ function App() {
     .replace('setari', 'setări')
     .replace('luna', 'luna');
 
+  const paginiDinSetari = ['luna', 'reguli', 'efectiv', 'istoric'];
+  const arataInapoiSetari = userLogat?.rol === 'admin' && paginiDinSetari.includes(paginaCurenta);
+
   if (paginaCurenta === 'login') {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white">
@@ -401,6 +404,16 @@ function App() {
             </div>
 
             {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
+
+            {arataInapoiSetari && (
+              <button
+                onClick={() => { vibreaza(25); setPaginaCurenta('setari'); }}
+                className="mb-4 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 text-[10px] font-black uppercase text-slate-300 active:scale-95"
+              >
+                Înapoi la setări
+              </button>
+            )}
+
             {paginaCurenta === 'luna' && <EfectivLunaPage />}
             {paginaCurenta === 'reguli' && <ConfigurareEfectiv />}
             {paginaCurenta === 'efectiv' && <EfectivPage userLogat={userLogat} onLog={scrieIstoric} />}
@@ -623,13 +636,13 @@ function App() {
       </div>
 
       {userLogat?.rol === 'admin' && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-4 py-1 md:hidden">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-2 py-1 md:hidden">
           <div className="grid grid-cols-5 gap-1 max-w-4xl mx-auto">
             {adminPages.map((p) => (
               <button
                 key={p}
                 onClick={() => { vibreaza(25); setPaginaCurenta(p); }}
-                className={`py-3 px-1 rounded-2xl font-black text-[13px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-500'}`}
+                className={`py-4 px-1 rounded-xl font-black text-[13px] uppercase ${paginaCurenta === p ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-500'}`}
               >
                 {adminLabel(p)}
               </button>

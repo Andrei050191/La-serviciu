@@ -236,17 +236,17 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, on
             </div>
             <div>
               <h2 className="text-lg font-black uppercase">Setări</h2>
-              <p className="text-xs text-slate-400 font-bold">Aici rămân doar butoanele principale</p>
+              <p className="text-xs text-slate-400 font-bold">Alege ce dorești să modifici</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3">
-            {butonMeniu('Setări servicii', 'Permite sau oprește serviciu în zile consecutive', <Settings size={22} />, () => setSectiune('setari_servicii'))}
+            {onOpenLuna && butonMeniu('Răspândirea lunară a efectivului', 'Tabel lunar cu servicii și statusuri', <CalendarDays size={22} />, onOpenLuna)}
+            {onOpenReguli && butonMeniu('Eligibilitate', 'Cine are voie pe fiecare serviciu', <ShieldAlert size={22} />, onOpenReguli)}
+            {onOpenEfectiv && butonMeniu('Efectiv', 'Adaugă, modifică, dezactivează și schimbă ordinea persoanelor', <Users size={22} />, onOpenEfectiv)}
             {butonMeniu('Gestionare servicii', 'Adaugă, modifică, șterge și schimbă ordinea', <GripVertical size={22} />, () => setSectiune('gestionare_servicii'))}
+            {butonMeniu('Setări servicii', 'Permite sau oprește serviciu în zile consecutive', <Settings size={22} />, () => setSectiune('setari_servicii'))}
             {onOpenIstoric && butonMeniu('Istoric modificări', 'Vezi ultimele modificări făcute în aplicație', <History size={22} />, onOpenIstoric)}
-            {onOpenLuna && butonMeniu('Luna', 'Tabel lunar cu servicii și statusuri', <CalendarDays size={22} />, onOpenLuna)}
-            {onOpenReguli && butonMeniu('Reguli', 'Cine are voie pe fiecare serviciu', <ShieldAlert size={22} />, onOpenReguli)}
-            {onOpenEfectiv && butonMeniu('Efectiv', 'Adaugă, modifică sau dezactivează persoane', <Users size={22} />, onOpenEfectiv)}
           </div>
         </div>
       </div>
