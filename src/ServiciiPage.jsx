@@ -288,11 +288,7 @@ const ServiciiPage = ({ editabil }) => {
                           );
                         })}
                       </select>
-                      <p className="text-[10px] text-slate-500 font-bold ml-2 mt-1">
-                        {zilnicActiv
-                          ? 'Poți selecta doar persoana prezentă la serviciu. Regula pe zile consecutive este permisă pentru acest serviciu, dar persoana tot nu poate fi dublată în aceeași zi.'
-                          : 'Poți selecta doar persoana prezentă la serviciu. Nu poți selecta dacă e concediu, zi liberă, deplasare, foaie de boală, deja azi, serviciu ieri sau serviciu mâine.'}
-                      </p>
+                     
                       </>
                     ) : (
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/50 flex justify-between items-center">
