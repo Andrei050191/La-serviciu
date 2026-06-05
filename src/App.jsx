@@ -478,25 +478,6 @@ function App() {
 
             {paginaCurenta === 'categorii' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">Prezenți</p>
-                    <p className="text-3xl font-black text-green-400">{statisticiSumar.prezenti}</p>
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">În serviciu</p>
-                    <p className="text-3xl font-black text-blue-400">{statisticiSumar.inServiciu}</p>
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">După serviciu</p>
-                    <p className="text-3xl font-black text-slate-300">{statisticiSumar.dupaServiciu}</p>
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">Cantină</p>
-                    <p className="text-3xl font-black text-orange-400">{statisticiSumar.cantina}</p>
-                  </div>
-                </div>
-
                 <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-4">
                   <button
                     onClick={() => setRaportDeschis(!raportDeschis)}
