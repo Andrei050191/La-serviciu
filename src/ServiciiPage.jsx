@@ -125,12 +125,6 @@ const ServiciiPage = ({ editabil }) => {
     if (persoana.numeComplet === omPlanificat) return "";
     if (persoana.activ === false) return "inactiv";
 
-    // Dacă nu are status setat pentru ziua aleasă, îl tratăm ca „Prezent la serviciu”.
-    // Se poate selecta doar persoana care este prezentă la serviciu.
-    const statusAzi = persoana[`status_${zi.ziFiltru}`] || "Prezent la serviciu";
-    const motivStatus = formatMotivStatus(statusAzi);
-    if (motivStatus) return motivStatus;
-
     const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
     const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
     const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
@@ -144,7 +138,20 @@ const ServiciiPage = ({ editabil }) => {
     const esteDejaAzi = oameniAzi.some((om, i) => i !== indexFunctie && om === persoana.numeComplet);
     if (esteDejaAzi) return "deja azi";
 
+    // Dacă nu are status setat pentru ziua aleasă, îl tratăm ca „Prezent la serviciu”.
+    // Când switch-ul este ACTIV pentru funcția curentă, permitem aceeași persoană în zile consecutive,
+    // chiar dacă statusul de azi este automat „După serviciu” sau „În serviciu”.
+    const statusAzi = persoana[`status_${zi.ziFiltru}`] || "Prezent la serviciu";
+    const statusBlocatManual = ["Concediu", "Zi liberă", "Deplasare", "Foaie de boala"];
+
+    if (statusBlocatManual.includes(statusAzi)) {
+      return formatMotivStatus(statusAzi);
+    }
+
     if (!zilnicActiv) {
+      const motivStatus = formatMotivStatus(statusAzi);
+      if (motivStatus) return motivStatus;
+
       if (oameniIeri.includes(persoana.numeComplet)) return "serviciu ieri";
       if (oameniMaine.includes(persoana.numeComplet)) return "serviciu mâine";
     }
