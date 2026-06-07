@@ -442,8 +442,8 @@ function App() {
               <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black text-white">{notificari.length}</span>
             </div>
 
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1 overscroll-contain">
-              {notificari.map((n) => (
+            <div className="space-y-2">
+              {notificari.slice(0, 3).map((n) => (
                 <div key={n.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-3">
                   <p className="text-sm font-black text-white leading-snug">{n.mesaj}</p>
                   {(n.functie || n.dataServiciu) && (

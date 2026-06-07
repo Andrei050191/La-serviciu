@@ -118,6 +118,13 @@ const ServiciiPage = ({ editabil }) => {
   }, []);
 
   const serviciuZilnicActivPentru = (functie) => {
+    if (numarInterventieDinNume(functie)) {
+      return setariServicii.serviciiZilnic?.['Intervenția'] === true
+        || setariServicii.serviciiZilnic?.[functie] === true
+        || setariServicii.serviciiZilnic?.['Intervenția 1'] === true
+        || setariServicii.serviciiZilnic?.['Intervenția 2'] === true;
+    }
+
     return setariServicii.serviciiZilnic?.[functie] === true;
   };
 
@@ -432,7 +439,7 @@ const ServiciiPage = ({ editabil }) => {
                   <div key={f} className="flex flex-col gap-1">
                     <label className="text-[12px] font-black text-slate-200 uppercase ml-2 tracking-tighter flex items-center gap-2">
                       {f}
-                      {setariServicii.serviciiZilnic?.[f] === true && (
+                      {zilnicActiv && (
                         <span className="text-[9px] bg-green-600/20 text-green-300 border border-green-600/30 px-2 py-0.5 rounded-full">zilnic permis</span>
                       )}
                     </label>

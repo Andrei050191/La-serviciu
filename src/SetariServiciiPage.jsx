@@ -40,6 +40,49 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, on
     return normalizeServiciiConfigurate(serviciiConfigurate).filter(s => s.activ !== false);
   }, [serviciiConfigurate]);
 
+  const numarInterventieDinNume = (nume = '') => {
+    const match = String(nume).match(/^Intervenția\s+(\d+)$/i);
+    return match ? Number(match[1]) : null;
+  };
+
+  const cheieSetareServiciu = (functie = '') => {
+    return numarInterventieDinNume(functie) ? 'Intervenția' : functie;
+  };
+
+  const serviciiPentruSetari = useMemo(() => {
+    const rezultat = [];
+    let interventieAdaugata = false;
+
+    serviciiActive.forEach((serviciu) => {
+      if (numarInterventieDinNume(serviciu.nume)) {
+        if (!interventieAdaugata) {
+          rezultat.push({
+            id: 'interventia_comuna',
+            nume: 'Intervenția',
+            descriere: 'Regulă comună pentru Intervenția 1, 2, 3, 4...',
+            esteInterventieComuna: true
+          });
+          interventieAdaugata = true;
+        }
+        return;
+      }
+
+      rezultat.push(serviciu);
+    });
+
+    return rezultat;
+  }, [serviciiActive]);
+
+  const esteZilnicActiv = (functie) => {
+    const cheie = cheieSetareServiciu(functie);
+    if (cheie === 'Intervenția') {
+      return serviciiZilnic['Intervenția'] === true
+        || serviciiZilnic['Intervenția 1'] === true
+        || serviciiZilnic['Intervenția 2'] === true;
+    }
+    return serviciiZilnic[cheie] === true;
+  };
+
   const salveazaConfig = async (listaNoua, serviciiZilnicNou = serviciiZilnic) => {
     const listaNormalizata = normalizeServiciiConfigurate(listaNoua);
     await setDoc(doc(db, "setari", "servicii"), {
@@ -50,8 +93,15 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, on
   };
 
   const schimbaServiciu = async (functie) => {
-    const valoareNoua = !(serviciiZilnic[functie] === true);
-    const serviciiNoi = { ...serviciiZilnic, [functie]: valoareNoua };
+    const cheie = cheieSetareServiciu(functie);
+    const valoareNoua = !esteZilnicActiv(functie);
+    const serviciiNoi = { ...serviciiZilnic, [cheie]: valoareNoua };
+
+    if (cheie === 'Intervenția') {
+      Object.keys(serviciiNoi).forEach((k) => {
+        if (/^Intervenția\s+\d+$/i.test(k)) delete serviciiNoi[k];
+      });
+    }
 
     setServiciiZilnic(serviciiNoi);
     setSalvare(true);
@@ -61,7 +111,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, on
 
       if (onLog) {
         await onLog("Setare servicii", {
-          camp: `${functie} zilnic`,
+          camp: `${cheie} zilnic`,
           valoare: valoareNoua ? "activat" : "dezactivat"
         }, null);
       }
@@ -353,18 +403,22 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, on
           </div>
 
           <div className="space-y-3">
-            {serviciiActive.map((serviciu) => {
+            {serviciiPentruSetari.map((serviciu) => {
               const functie = serviciu.nume;
-              const activ = serviciiZilnic[functie] === true;
+              const activ = esteZilnicActiv(functie);
 
               return (
                 <div key={serviciu.id} className="bg-slate-950 border border-slate-800 rounded-[2rem] p-5 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-black uppercase text-white">{functie}</p>
                     <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                      {activ
-                        ? 'Aceeași persoană poate fi pusă la acest serviciu în zile consecutive.'
-                        : 'Se aplică regula normală: persoana nu poate fi pusă în ziua precedentă sau următoare.'}
+                      {serviciu.esteInterventieComuna
+                        ? (activ
+                          ? 'Regula este activă pentru toate pozițiile: Intervenția 1, 2, 3, 4...'
+                          : 'Regula normală se aplică pentru toate pozițiile de intervenție.')
+                        : (activ
+                          ? 'Aceeași persoană poate fi pusă la acest serviciu în zile consecutive.'
+                          : 'Se aplică regula normală: persoana nu poate fi pusă în ziua precedentă sau următoare.')}
                     </p>
                   </div>
 
