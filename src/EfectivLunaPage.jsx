@@ -10,8 +10,8 @@ const prescurtari = {
   'Ajutor OSU': 'A.OSU',
   'Sergent de serviciu PCT': 'PCT',
   'Planton': 'PL',
-  'Patrulă': 'PAT',
-  'Operator radio': 'RAD',
+  'Patrulă': 'PATRU',
+  'Operator radio': 'RADIO',
   'Intervenția 1': 'INT1',
   'Intervenția 2': 'INT2',
   'Responsabil': 'RESP'
@@ -287,7 +287,7 @@ const EfectivLunaPage = () => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-[11px] text-slate-400 font-bold leading-relaxed">
-        Prescurtări: A.OSU = Ajutor OSU, SGT = Sergent de serviciu PCT, PL = Planton, PAT = Patrulă, RAD = Operator radio, INT1/INT2 = Intervenția, RESP = Responsabil. Statusuri afișate: CONC = Concediu, LIB = Zi liberă, DEPL = Deplasare, BOALĂ = Foaie de boală, DUPĂ = După serviciu. Statusul Prezent la serviciu nu se afișează.
+        Prescurtări: A.OSU = Ajutor OSU, PCT = Sergent de serviciu PCT, PL = Planton, PATRU = Patrulă, RADIO = Operator radio, INT1/INT2 = Intervenția, RESP = Responsabil. Statusuri afișate: CONC = Concediu, ZL = Zi liberă, DEPL = Deplasare, BOALĂ = Foaie de boală, DUPĂ = După serviciu. Statusul Prezent la serviciu nu se afișează.
       </div>
     </div>
   );
