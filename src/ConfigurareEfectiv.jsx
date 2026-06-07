@@ -10,7 +10,22 @@ const ConfigurareEfectiv = () => {
   const [functieSelectata, setFunctieSelectata] = useState("Ajutor OSU");
   const [serviciiConfigurate, setServiciiConfigurate] = useState(normalizeServiciiConfigurate([]));
 
-  const functii = normalizeServiciiConfigurate(serviciiConfigurate).filter(s => s.activ !== false).map(s => s.nume);
+  const cheieEligibilitate = (functie = '') => {
+    return /^Intervenția\s+\d+$/i.test(String(functie).trim()) ? 'Intervenția' : functie;
+  };
+
+  const listaEligibilitate = (functie) => {
+    if (functie === 'Intervenția') {
+      return reguli['Intervenția'] || reguli['Intervenția 1'] || reguli['Intervenția 2'] || [];
+    }
+    return reguli[functie] || [];
+  };
+
+  const functii = Array.from(new Set(
+    normalizeServiciiConfigurate(serviciiConfigurate)
+      .filter(s => s.activ !== false)
+      .map(s => cheieEligibilitate(s.nume))
+  ));
 
   useEffect(() => {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
@@ -23,14 +38,16 @@ const ConfigurareEfectiv = () => {
     const unsubServicii = onSnapshot(doc(db, "setari", "servicii"), (docSnap) => {
       const lista = normalizeServiciiConfigurate(docSnap.exists() ? docSnap.data().serviciiConfigurate : []);
       setServiciiConfigurate(lista);
-      const active = lista.filter(s => s.activ !== false).map(s => s.nume);
+      const active = Array.from(new Set(
+        lista.filter(s => s.activ !== false).map(s => cheieEligibilitate(s.nume))
+      ));
       if (active.length && !active.includes(functieSelectata)) setFunctieSelectata(active[0]);
     });
     return () => { unsubPers(); unsubReguli(); unsubServicii(); };
   }, []);
 
   const togglePersoana = async (numeComplet) => {
-    const listaActuala = reguli[functieSelectata] || [];
+    const listaActuala = listaEligibilitate(functieSelectata);
     const nouaLista = listaActuala.includes(numeComplet) ? listaActuala.filter(n => n !== numeComplet) : [...listaActuala, numeComplet];
     await setDoc(doc(db, "setari", "reguli_servicii"), { [functieSelectata]: nouaLista }, { merge: true });
   };
@@ -64,7 +81,7 @@ const ConfigurareEfectiv = () => {
             
             // Pentru baza de date (comparație), păstrăm totul Uppercase ca să nu existe erori de matching
             const numeCompletFull = `${p.grad} ${p.prenume} ${p.nume}`.trim().toUpperCase();
-            const esteBifat = (reguli[functieSelectata] || []).includes(numeCompletFull);
+            const esteBifat = listaEligibilitate(functieSelectata).includes(numeCompletFull);
 
             return (
               <button key={p.id} onClick={() => togglePersoana(numeCompletFull)}

@@ -188,6 +188,108 @@ const ServiciiPage = ({ editabil }) => {
     }
   };
 
+  const numarInterventieDinNume = (nume = '') => {
+    const match = String(nume).match(/^Intervenția\s+(\d+)$/i);
+    return match ? Number(match[1]) : null;
+  };
+
+  const cheieEligibilitate = (functie = '') => {
+    return numarInterventieDinNume(functie) ? 'Intervenția' : functie;
+  };
+
+  const listaEligibilitatePentru = (functie) => {
+    const cheie = cheieEligibilitate(functie);
+    if (cheie === 'Intervenția') {
+      return reguli['Intervenția'] || reguli[functie] || reguli['Intervenția 1'] || reguli['Intervenția 2'] || [];
+    }
+    return reguli[functie] || [];
+  };
+
+  const numarInterventiiDinZi = (dateZi = {}) => {
+    const nr = Number(dateZi.interventii || dateZi.mod || 2);
+    if (!Number.isFinite(nr)) return 2;
+    return Math.max(1, nr);
+  };
+
+  const asiguraInterventiiConfigurate = async (numarDoriti) => {
+    const lista = normalizeServiciiConfigurate(serviciiConfigurate);
+    const existente = lista
+      .map(s => numarInterventieDinNume(s.nume))
+      .filter(n => Number.isInteger(n));
+
+    const maxExistent = existente.length ? Math.max(...existente) : 0;
+    if (numarDoriti <= maxExistent) return lista;
+
+    let pozitieUrmatoare = pozitieMaximaServicii(lista);
+    const serviciiNoi = [];
+
+    for (let nr = maxExistent + 1; nr <= numarDoriti; nr++) {
+      serviciiNoi.push({
+        id: `interventia_${nr}`,
+        nume: `Intervenția ${nr}`,
+        pozitie: pozitieUrmatoare,
+        ordineAfisare: lista.length + serviciiNoi.length,
+        activ: true
+      });
+      pozitieUrmatoare += 1;
+    }
+
+    const listaNoua = normalizeServiciiConfigurate([...lista, ...serviciiNoi]);
+    await setDoc(doc(db, "setari", "servicii"), { serviciiConfigurate: listaNoua }, { merge: true });
+    return listaNoua;
+  };
+
+  const schimbaNumarInterventii = async (zi, dateZi, directie) => {
+    const numarCurent = numarInterventiiDinZi(dateZi);
+    const numarNou = Math.max(1, numarCurent + directie);
+    if (numarNou === numarCurent) return;
+
+    const listaActualizata = await asiguraInterventiiConfigurate(numarNou);
+    const serviciiInterventie = listaActualizata
+      .filter(s => s.activ !== false && numarInterventieDinNume(s.nume))
+      .sort((a, b) => numarInterventieDinNume(a.nume) - numarInterventieDinNume(b.nume));
+
+    const totalPozitiiNou = Math.max(
+      pozitieMaximaServicii(listaActualizata),
+      totalPozitiiServicii,
+      dateZi.oameni?.length || 0
+    );
+
+    const oameniNoi = Array(totalPozitiiNou).fill("Din altă subunitate");
+    (dateZi.oameni || []).forEach((om, i) => {
+      oameniNoi[i] = om || "Din altă subunitate";
+    });
+
+    if (numarNou < numarCurent) {
+      for (const serviciu of serviciiInterventie) {
+        const nr = numarInterventieDinNume(serviciu.nume);
+        if (nr > numarNou) {
+          const omScos = oameniNoi[serviciu.pozitie];
+          if (omScos && omScos !== "Din altă subunitate") {
+            await trimiteNotificareServiciu({
+              userNumeComplet: omScos,
+              mesaj: `Ai fost scos din serviciu: ${serviciu.nume}, ${zi.key}.`,
+              tip: "serviciu_scos",
+              functie: serviciu.nume,
+              dataServiciu: zi.key
+            });
+          }
+          oameniNoi[serviciu.pozitie] = "Din altă subunitate";
+        }
+      }
+    }
+
+    const nC = { ...calendar };
+    nC[zi.key] = {
+      ...(nC[zi.key] || {}),
+      oameni: oameniNoi,
+      interventii: numarNou,
+      mod: String(Math.min(numarNou, 2)) // compatibilitate cu varianta veche 1/2
+    };
+
+    await setDoc(doc(db, "servicii", "calendar"), { data: nC });
+  };
+
   const handleSchimbare = async (zi, index, valoare) => {
     const indexCalendar = pozitieCalendar(index);
     const nouCalendar = JSON.parse(JSON.stringify(calendar || {}));
@@ -281,6 +383,7 @@ const ServiciiPage = ({ editabil }) => {
         const dateZiIncompleta = calendar[zi.key] || {};
         const dateZi = {
           mod: dateZiIncompleta.mod || "2",
+          interventii: numarInterventiiDinZi(dateZiIncompleta),
           oameni: dateZiIncompleta.oameni || Array(totalPozitiiServicii).fill("Din altă subunitate")
         };
         
@@ -291,17 +394,25 @@ const ServiciiPage = ({ editabil }) => {
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-black/20 rounded-t-[2rem]">
               <h3 className="text-[17px] font-black uppercase text-white tracking-widest">{zi.display}</h3>
               {editabil && (
-                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-700">
-                  <button onClick={async () => {
-                    const nC = {...calendar}; 
-                    nC[zi.key] = {...(nC[zi.key] || {}), oameni: dateZi.oameni, mod: "1"};
-                    await setDoc(doc(db, "servicii", "calendar"), { data: nC });
-                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "1" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><User size={12}/></button>
-                  <button onClick={async () => {
-                    const nC = {...calendar}; 
-                    nC[zi.key] = {...(nC[zi.key] || {}), oameni: dateZi.oameni, mod: "2"};
-                    await setDoc(doc(db, "servicii", "calendar"), { data: nC });
-                  }} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${dateZi.mod === "2" ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><Users size={12}/></button>
+                <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-700 gap-1">
+                  <button
+                    onClick={() => schimbaNumarInterventii(zi, dateZi, -1)}
+                    className="w-8 h-8 rounded-lg text-sm font-black text-slate-300 bg-slate-900 active:scale-95 disabled:opacity-30"
+                    disabled={dateZi.interventii <= 1}
+                    title="Scoate o persoană din intervenție"
+                  >
+                    -
+                  </button>
+                  <div className="min-w-[44px] h-8 px-2 rounded-lg bg-blue-600 flex items-center justify-center text-[11px] font-black text-white">
+                    {dateZi.interventii}
+                  </div>
+                  <button
+                    onClick={() => schimbaNumarInterventii(zi, dateZi, 1)}
+                    className="w-8 h-8 rounded-lg text-sm font-black text-slate-300 bg-slate-900 active:scale-95"
+                    title="Adaugă o persoană la intervenție"
+                  >
+                    +
+                  </button>
                 </div>
               )}
             </div>
@@ -310,9 +421,10 @@ const ServiciiPage = ({ editabil }) => {
               {serviciiActive.map((serviciu, idx) => {
                 const f = serviciu.nume;
                 const indexCalendar = serviciu.pozitie;
-                if (dateZi.mod === "1" && f === "Intervenția 2") return null;
+                const nrInterventie = numarInterventieDinNume(f);
+                if (nrInterventie && nrInterventie > dateZi.interventii) return null;
                 const omPlanificat = dateZi.oameni[indexCalendar] || "Din altă subunitate";
-                const listaE = reguli[f] || [];
+                const listaE = listaEligibilitatePentru(f);
                 const filtrati = (listaE.length > 0) ? personal.filter(p => listaE.includes(p.numeComplet)) : personal;
                 const zilnicActiv = serviciuZilnicActivPentru(f);
 
