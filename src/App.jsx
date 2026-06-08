@@ -442,9 +442,9 @@ function App() {
               <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black text-white">{notificari.length}</span>
             </div>
 
-            <div className="space-y-2 max-h-[45vh] overflow-y-auto overscroll-contain pr-1 touch-pan-y">
+            <div className="space-y-2 max-h-[208px] overflow-y-auto pr-1 overscroll-contain touch-pan-y">
               {notificari.map((n) => (
-                <div key={n.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-3">
+                <div key={n.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-3 min-h-[64px]">
                   <p className="text-sm font-black text-white leading-snug">{n.mesaj}</p>
                   {(n.functie || n.dataServiciu) && (
                     <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
