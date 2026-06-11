@@ -45,6 +45,8 @@ function App() {
   
   const [showConcediuSelect, setShowConcediuSelect] = useState(false);
   const [numarZileConcediu, setNumarZileConcediu] = useState(1);
+  const [showDeplasareSelect, setShowDeplasareSelect] = useState(false);
+  const [numarZileDeplasare, setNumarZileDeplasare] = useState(1);
   const [notificari, setNotificari] = useState([]);
 
   // Funcție utilitară pentru vibrație
@@ -261,6 +263,26 @@ function App() {
       numarZile: numarZileConcediu
     }, userLogat);
     setShowConcediuSelect(false);
+  };
+
+  const aplicaDeplasareLunga = async () => {
+    vibreaza(80);
+    const updates = {};
+    const dataStart = optiuniZile[ziSelectata].data;
+
+    for (let i = 0; i < numarZileDeplasare; i++) {
+      const dataViitoare = addDays(dataStart, i);
+      const key = format(dataViitoare, 'yyyyMMdd');
+      updates[`status_${key}`] = "Deplasare";
+      updates[`cantina_${key}`] = false;
+    }
+
+    await updateDoc(doc(db, "echipa", userLogat.id), updates);
+    await scrieIstoric("Deplasare aplicată", {
+      dataStart: format(dataStart, 'dd.MM.yyyy'),
+      numarZile: numarZileDeplasare
+    }, userLogat);
+    setShowDeplasareSelect(false);
   };
 
   const toggleCantina = async (id, stare) => {
@@ -649,7 +671,7 @@ function App() {
                       if (st === "Concediu") {
                         return (
                           <div key={st} className="flex flex-col gap-2">
-                            <button disabled={esteBlocat} onClick={() => { vibreaza(40); setShowConcediuSelect(!showConcediuSelect); }} 
+                            <button disabled={esteBlocat} onClick={() => { vibreaza(40); setShowConcediuSelect(!showConcediuSelect); setShowDeplasareSelect(false); }} 
                               className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
                                 ${activ ? 'bg-purple-600 text-white border-purple-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
                                 ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
@@ -670,6 +692,37 @@ function App() {
                                    <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.min(45, numarZileConcediu + 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
                                  </div>
                                  <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm active:scale-95 transition-transform">Aplică Concediul</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+
+                      if (st === "Deplasare") {
+                        return (
+                          <div key={st} className="flex flex-col gap-2">
+                            <button disabled={esteBlocat} onClick={() => { vibreaza(40); setShowDeplasareSelect(!showDeplasareSelect); setShowConcediuSelect(false); }}
+                              className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
+                                ${activ ? 'bg-orange-600 text-white border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
+                                ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
+                              <div className={`p-2 rounded-lg ${activ ? 'bg-white text-orange-600' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
+                              <span className="text-sm uppercase font-black text-left">{st}</span>
+                              <div className="ml-auto flex items-center gap-2">
+                                {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
+                                {esteBlocat && <Lock size={20} />}
+                                {!esteBlocat && (showDeplasareSelect ? <ChevronUp size={20}/> : <ChevronDown size={20}/>) }
+                              </div>
+                            </button>
+                            {showDeplasareSelect && !esteBlocat && (
+                              <div className="bg-slate-950 border-2 border-orange-500/50 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
+                                 <p className="text-center text-[10px] font-black uppercase text-orange-400 mb-4">Câte zile pleci în deplasare?</p>
+                                 <div className="flex items-center justify-between mb-6">
+                                   <button onClick={() => { vibreaza(20); setNumarZileDeplasare(Math.max(1, numarZileDeplasare - 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
+                                   <span className="text-4xl font-black">{numarZileDeplasare}</span>
+                                   <button onClick={() => { vibreaza(20); setNumarZileDeplasare(Math.min(45, numarZileDeplasare + 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
+                                 </div>
+                                 <button onClick={aplicaDeplasareLunga} className="w-full bg-orange-600 py-4 rounded-xl font-black uppercase text-sm active:scale-95 transition-transform">Aplică deplasarea</button>
                               </div>
                             )}
                           </div>
