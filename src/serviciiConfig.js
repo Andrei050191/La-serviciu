@@ -77,3 +77,21 @@ export const serviciiPersoanaInZi = (ziCalendar, numeComplet, serviciiActive) =>
     .filter(s => oameni[s.pozitie] === numeComplet)
     .map(s => s.nume);
 };
+
+// Litera scurtă a fiecărui serviciu, folosită în Grafice servicii.
+export const literaServiciu = (nume = '') => {
+  const n = String(nume).trim();
+  if (numarInterventieDin(n)) return 'I';
+  if (/^ofi[țţ]er/i.test(n)) return 'O';
+  const fixe = {
+    'Ajutor OSU': 'A',
+    'Sergent de serviciu PCT': 'PCT',
+    'Planton': 'Pl',
+    'Operator radio': 'Op',
+    'Patrulă': 'P',
+    'Responsabil': 'R'
+  };
+  if (fixe[n]) return fixe[n];
+  // Serviciu nou: inițialele cuvintelor (max. 3 litere).
+  return n.split(/\s+/).filter(Boolean).map(c => c[0].toUpperCase()).join('').slice(0, 3) || '?';
+};

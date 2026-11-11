@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical, CalendarDays, ShieldAlert, Users, Send, Megaphone } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical, CalendarDays, ShieldAlert, Users, Send, Megaphone, CalendarRange } from 'lucide-react';
 import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
 
-const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, onOpenEfectiv, onOpenTelegram, onOpenAnunturi }) => {
+const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, onOpenEfectiv, onOpenTelegram, onOpenAnunturi, onOpenGrafice }) => {
   const [serviciiZilnic, setServiciiZilnic] = useState({});
   const [serviciiConfigurate, setServiciiConfigurate] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -292,6 +292,7 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, on
 
           <div className="grid grid-cols-1 gap-3">
             {onOpenAnunturi && butonMeniu('Anunțuri', 'Trimite un mesaj pe Telegram la toți', <Megaphone size={22} />, onOpenAnunturi)}
+            {onOpenGrafice && butonMeniu('Grafice servicii', 'Graficul lunar al fiecărui serviciu: bifezi cine intră', <CalendarRange size={22} />, onOpenGrafice)}
             {onOpenLuna && butonMeniu('Răspândirea lunară a efectivului', 'Tabel lunar cu servicii și statusuri', <CalendarDays size={22} />, onOpenLuna)}
             {onOpenReguli && butonMeniu('Eligibilitate', 'Cine are voie pe fiecare serviciu', <ShieldAlert size={22} />, onOpenReguli)}
             {onOpenEfectiv && butonMeniu('Efectiv', 'Adaugă, modifică, dezactivează și schimbă ordinea persoanelor', <Users size={22} />, onOpenEfectiv)}

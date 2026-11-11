@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
-import { doc, onSnapshot, collection, query, orderBy, setDoc, updateDoc, addDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
 import { Shield, User, Users } from 'lucide-react';
-import { format, addDays, parse } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
-import { trimiteTelegram } from './telegram';
 import { useZiCurenta } from './useZiCurenta';
+import { motivIndisponibil, seteazaNumarInterventii, seteazaServiciu } from './planificare';
 
 const ServiciiPage = ({ editabil, onLog }) => {
   const [calendar, setCalendar] = useState({});
@@ -105,77 +105,16 @@ const ServiciiPage = ({ editabil, onLog }) => {
     return setariServicii.serviciiZilnic?.[functie] === true;
   };
 
-  const formatMotivStatus = (status) => {
-    if (!status) return "";
-    if (status === "Prezent la serviciu") return "";
-    if (status === "Foaie de boala") return "foaie de boală";
-    return status.toLowerCase();
-  };
+  const getMotivIndisponibil = (persoana, zi, indexFunctie, omPlanificat) => motivIndisponibil({
+    persoana,
+    ziKey: zi.key,
+    pozitie: pozitieCalendar(indexFunctie),
+    functie: functii[indexFunctie],
+    omPlanificat,
+    calendar,
+    serviciiZilnic: setariServicii.serviciiZilnic
+  });
 
-  const getMotivIndisponibil = (persoana, zi, indexFunctie, omPlanificat) => {
-    const indexCalendar = pozitieCalendar(indexFunctie);
-    if (!persoana) return "persoană indisponibilă";
-    if (persoana.numeComplet === omPlanificat) return "";
-    if (persoana.activ === false) return "inactiv";
-
-    const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
-    const ieriKey = format(addDays(dataCurenta, -1), 'dd.MM.yyyy');
-    const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
-
-    const oameniAzi = calendar[zi.key]?.oameni || [];
-    const oameniIeri = calendar[ieriKey]?.oameni || [];
-    const oameniMaine = calendar[maineKey]?.oameni || [];
-    const functieCurenta = functii[indexFunctie];
-    const zilnicActiv = serviciuZilnicActivPentru(functieCurenta);
-
-    const esteDejaAzi = oameniAzi.some((om, i) => i !== indexCalendar && om === persoana.numeComplet);
-    if (esteDejaAzi) return "în serviciu azi";
-
-    // Dacă nu are status setat pentru ziua aleasă, îl tratăm ca „Prezent la serviciu”.
-    // Când switch-ul este ACTIV pentru funcția curentă, permitem aceeași persoană în zile consecutive,
-    // chiar dacă statusul de azi este automat „După serviciu” sau „În serviciu”.
-    const statusAzi = persoana[`status_${zi.ziFiltru}`] || "Prezent la serviciu";
-    const statusBlocatManual = ["Concediu", "Zi liberă", "Deplasare", "Foaie de boala", "Spitalul militar", "Studii"];
-
-    if (statusBlocatManual.includes(statusAzi)) {
-      return formatMotivStatus(statusAzi);
-    }
-
-    if (!zilnicActiv) {
-      const motivStatus = formatMotivStatus(statusAzi);
-      if (motivStatus) return motivStatus;
-
-      if (oameniIeri.includes(persoana.numeComplet)) return "în serviciu ieri";
-      if (oameniMaine.includes(persoana.numeComplet)) return "în serviciu mâine";
-    }
-
-    return "";
-  };
-
-
-  const trimiteNotificareServiciu = async ({ userNumeComplet, mesaj, tip, functie, dataServiciu }) => {
-    if (!userNumeComplet || userNumeComplet === "Din altă subunitate") return;
-
-    try {
-      await addDoc(collection(db, "notificari"), {
-        userNumeComplet,
-        mesaj,
-        tip,
-        functie,
-        dataServiciu,
-        citit: false,
-        dataClient: new Date().toISOString(),
-        createdAt: serverTimestamp()
-      });
-    } catch (e) {
-      console.warn("Nu am putut trimite notificarea:", e);
-    }
-
-    const persoana = personal.find(p => p.numeComplet === userNumeComplet);
-    if (persoana?.telegramChatId) {
-      trimiteTelegram(persoana.telegramChatId, `🔔 ${mesaj}`);
-    }
-  };
 
   const numarInterventieDinNume = (nume = '') => {
     const match = String(nume).match(/^Intervenția\s+(\d+)$/i);
@@ -200,119 +139,25 @@ const ServiciiPage = ({ editabil, onLog }) => {
     return Math.max(1, nr);
   };
 
-  const asiguraInterventiiConfigurate = async (numarDoriti) => {
-    const lista = normalizeServiciiConfigurate(serviciiConfigurate);
-    const existente = lista
-      .map(s => numarInterventieDinNume(s.nume))
-      .filter(n => Number.isInteger(n));
-
-    const maxExistent = existente.length ? Math.max(...existente) : 0;
-    if (numarDoriti <= maxExistent) return lista;
-
-    let pozitieUrmatoare = pozitieMaximaServicii(lista);
-    const serviciiNoi = [];
-
-    for (let nr = maxExistent + 1; nr <= numarDoriti; nr++) {
-      serviciiNoi.push({
-        id: `interventia_${nr}`,
-        nume: `Intervenția ${nr}`,
-        pozitie: pozitieUrmatoare,
-        ordineAfisare: lista.length + serviciiNoi.length,
-        activ: true
-      });
-      pozitieUrmatoare += 1;
-    }
-
-    const listaNoua = normalizeServiciiConfigurate([...lista, ...serviciiNoi]);
-    await setDoc(doc(db, "setari", "servicii"), { serviciiConfigurate: listaNoua }, { merge: true });
-    return listaNoua;
-  };
-
   const schimbaNumarInterventii = async (zi, dateZi, directie) => {
     const numarCurent = numarInterventiiDinZi(dateZi);
     const numarNou = Math.max(1, numarCurent + directie);
-    if (numarNou === numarCurent) return;
-
-    const listaActualizata = await asiguraInterventiiConfigurate(numarNou);
-    const serviciiInterventie = listaActualizata
-      .filter(s => s.activ !== false && numarInterventieDinNume(s.nume))
-      .sort((a, b) => numarInterventieDinNume(a.nume) - numarInterventieDinNume(b.nume));
-
-    // Tranzacție: citim ziua proaspăt din baza de date și scriem doar ziua respectivă,
-    // ca să nu suprascriem modificările făcute în același timp de altcineva.
-    const scosi = [];
-    await runTransaction(db, async (tx) => {
-      scosi.length = 0;
-      const ref = doc(db, "servicii", "calendar");
-      const snap = await tx.get(ref);
-      const ziDb = snap.exists() ? (snap.data().data?.[zi.key] || {}) : {};
-
-      const totalPozitiiNou = Math.max(
-        pozitieMaximaServicii(listaActualizata),
-        totalPozitiiServicii,
-        ziDb.oameni?.length || 0
-      );
-
-      const oameniNoi = Array(totalPozitiiNou).fill("Din altă subunitate");
-      (ziDb.oameni || []).forEach((om, i) => {
-        oameniNoi[i] = om || "Din altă subunitate";
-      });
-
-      if (numarNou < numarCurent) {
-        for (const serviciu of serviciiInterventie) {
-          const nr = numarInterventieDinNume(serviciu.nume);
-          if (nr > numarNou) {
-            const omScos = oameniNoi[serviciu.pozitie];
-            if (omScos && omScos !== "Din altă subunitate") {
-              scosi.push({ om: omScos, functie: serviciu.nume });
-            }
-            oameniNoi[serviciu.pozitie] = "Din altă subunitate";
-          }
-        }
-      }
-
-      tx.set(ref, {
-        data: {
-          [zi.key]: {
-            ...ziDb,
-            oameni: oameniNoi,
-            interventii: numarNou,
-            mod: String(Math.min(numarNou, 2)) // compatibilitate cu varianta veche 1/2
-          }
-        }
-      }, { merge: true });
+    await seteazaNumarInterventii({
+      ziKey: zi.key,
+      numarCurent,
+      numarNou,
+      serviciiConfigurate,
+      totalPozitii: totalPozitiiServicii,
+      personal,
+      onLog,
+      numeFrumos: afiseazaNumeFrumos
     });
-
-    if (onLog) {
-      await onLog("Număr intervenții", {
-        data: zi.key,
-        inainte: numarCurent,
-        dupa: numarNou,
-        ...(scosi.length ? { scosi: scosi.map(s => `${afiseazaNumeFrumos(s.om)} (${s.functie})`).join(', ') } : {})
-      }, null);
-    }
-
-    for (const { om, functie } of scosi) {
-      await trimiteNotificareServiciu({
-        userNumeComplet: om,
-        mesaj: `Ai fost scos din serviciu: ${functie}, ${zi.key}.`,
-        tip: "serviciu_scos",
-        functie,
-        dataServiciu: zi.key
-      });
-    }
   };
 
   const handleSchimbare = async (zi, index, valoare) => {
     const indexCalendar = pozitieCalendar(index);
     const vechiulOmLocal = calendar[zi.key]?.oameni?.[indexCalendar];
-    const dataCurenta = parse(zi.key, 'dd.MM.yyyy', new Date());
-    const maineKey = format(addDays(dataCurenta, 1), 'dd.MM.yyyy');
-    
-    const oameniMaine = calendar[maineKey]?.oameni || [];
-
     const functiaCurenta = functii[index];
-    const esteInterventie = functiaCurenta.includes("Intervenția");
     if (valoare !== "Din altă subunitate") {
       const omSelectat = personal.find(p => p.numeComplet === valoare);
       const motiv = getMotivIndisponibil(omSelectat, zi, index, vechiulOmLocal);
@@ -323,87 +168,21 @@ const ServiciiPage = ({ editabil, onLog }) => {
       }
     }
 
-    // Tranzacție: schimbăm doar poziția aleasă din ziua respectivă, pornind de la datele
-    // proaspete din baza de date (nu se mai pierd modificările altcuiva făcute în paralel).
-    let vechiulOmNume;
     try {
-      await runTransaction(db, async (tx) => {
-        const ref = doc(db, "servicii", "calendar");
-        const snap = await tx.get(ref);
-        const ziDb = snap.exists() ? (snap.data().data?.[zi.key] || {}) : {};
-        const oameni = Array.isArray(ziDb.oameni)
-          ? [...ziDb.oameni]
-          : Array(totalPozitiiServicii).fill("Din altă subunitate");
-        while (oameni.length <= indexCalendar) oameni.push("Din altă subunitate");
-
-        vechiulOmNume = oameni[indexCalendar];
-        oameni[indexCalendar] = valoare;
-
-        tx.set(ref, { data: { [zi.key]: { ...ziDb, oameni, mod: ziDb.mod || "2" } } }, { merge: true });
+      await seteazaServiciu({
+        ziKey: zi.key,
+        functie: functiaCurenta,
+        pozitie: indexCalendar,
+        valoare,
+        personal,
+        calendar,
+        totalPozitii: totalPozitiiServicii,
+        onLog,
+        numeFrumos: afiseazaNumeFrumos
       });
     } catch (e) {
       console.error(e);
       alert("Nu am putut salva planificarea. Încearcă din nou.");
-      return;
-    }
-
-    if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate" && !esteInterventie) {
-      const omV = personal.find(p => p.numeComplet === vechiulOmNume);
-      if (omV) {
-        const updateVechi = {
-          [`status_${zi.ziFiltru}`]: "Prezent la serviciu"
-        };
-
-        const vechiulOmEstePlanificatMaine = oameniMaine.includes(vechiulOmNume);
-        if (!vechiulOmEstePlanificatMaine) {
-          updateVechi[`status_${zi.ziUrmatoareFiltru}`] = "Prezent la serviciu";
-        }
-
-        await updateDoc(doc(db, "echipa", omV.id), updateVechi);
-      }
-    }
-
-    if (valoare !== "Din altă subunitate" && !esteInterventie) {
-      const omN = personal.find(p => p.numeComplet === valoare);
-      if (omN) {
-        await updateDoc(doc(db, "echipa", omN.id), { 
-          [`status_${zi.ziFiltru}`]: "În serviciu",
-          [`status_${zi.ziUrmatoareFiltru}`]: "După serviciu"
-        });
-      }
-    }
-
-    if (valoare !== vechiulOmNume && onLog) {
-      const persoanaNoua = personal.find(p => p.numeComplet === valoare);
-      const persoanaVeche = personal.find(p => p.numeComplet === vechiulOmNume);
-      await onLog("Planificare serviciu", {
-        data: zi.key,
-        serviciu: functiaCurenta,
-        inainte: afiseazaNumeFrumos(vechiulOmNume) || "Din altă subunitate",
-        dupa: afiseazaNumeFrumos(valoare)
-      }, persoanaNoua || persoanaVeche || null);
-    }
-
-    if (valoare !== vechiulOmNume) {
-      if (valoare && valoare !== "Din altă subunitate") {
-        await trimiteNotificareServiciu({
-          userNumeComplet: valoare,
-          mesaj: `Ai fost pus la serviciu: ${functiaCurenta}, ${zi.key}.`,
-          tip: "serviciu_adaugat",
-          functie: functiaCurenta,
-          dataServiciu: zi.key
-        });
-      }
-
-      if (vechiulOmNume && vechiulOmNume !== "Din altă subunitate") {
-        await trimiteNotificareServiciu({
-          userNumeComplet: vechiulOmNume,
-          mesaj: `Ai fost scos din serviciu: ${functiaCurenta}, ${zi.key}.`,
-          tip: "serviciu_scos",
-          functie: functiaCurenta,
-          dataServiciu: zi.key
-        });
-      }
     }
   };
 

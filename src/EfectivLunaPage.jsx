@@ -4,22 +4,12 @@ import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { addMonths, eachDayOfInterval, endOfMonth, format, isToday, startOfMonth, subMonths } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { CalendarDays, ChevronLeft, ChevronRight, Copy, UserCheck } from 'lucide-react';
-import { normalizeServiciiConfigurate, numarInterventieDin } from './serviciiConfig';
+import { literaServiciu, normalizeServiciiConfigurate, numarInterventieDin } from './serviciiConfig';
 
-const prescurtari = {
-  'Ajutor OSU': 'A.OSU',
-  'Sergent de serviciu PCT': 'PCT',
-  'Planton': 'PL',
-  'Patrulă': 'PATRU',
-  'Operator radio': 'RADIO',
-  'Intervenția 1': 'INT1',
-  'Intervenția 2': 'INT2',
-  'Responsabil': 'RESP'
-};
 
 
 const statusPrescurtari = {
-  'În serviciu': 'SERV',
+  'În serviciu': 'S',
   'După serviciu': 'DUPĂ',
   'Zi liberă': 'ZL',
   'Concediu': 'CONC',
@@ -111,14 +101,13 @@ const EfectivLunaPage = () => {
     const key = format(data, 'yyyyMMdd');
     const status = persoana[`status_${key}`];
     if (!status || status === 'Prezent la serviciu' || status === 'Nespecificat') return '';
+    // Litera serviciului (A, PCT, I...) spune deja că e în serviciu; nu mai dublăm cu statusul.
+    if (status === 'În serviciu' && serviciiPentruPersoanaInZi(persoana, data).length > 0) return '';
     return status;
   };
 
-  const prescurtare = (s) => {
-    if (prescurtari[s]) return prescurtari[s];
-    const nr = numarInterventieDin(s);
-    return nr ? `INT${nr}` : s;
-  };
+  // Aceleași litere ca în Grafice servicii (O, A, PCT, Pl, I, Op, P, R).
+  const prescurtare = (s) => literaServiciu(s);
 
   const continutCelula = (persoana, data) => {
     const serv = serviciiPentruPersoanaInZi(persoana, data).map(prescurtare);
@@ -347,7 +336,7 @@ const EfectivLunaPage = () => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-[11px] text-slate-400 font-bold leading-relaxed">
-        Prescurtări: A.OSU = Ajutor OSU, PCT = Sergent de serviciu PCT, PL = Planton, PATRU = Patrulă, RADIO = Operator radio, INT1/INT2/INT3... = Intervenția 1/2/3... (se afișează, dar nu intră în total), totalul roșu = cele mai multe servicii, verde = cele mai puține, RESP = Responsabil. Statusuri afișate: CONC = Concediu, ZL = Zi liberă, DEPL = Deplasare, BOALĂ = Foaie de boală, SPIT = Spitalul militar, STUD = Studii, DUPĂ = După serviciu. Statusul Prezent la serviciu nu se afișează.
+        Servicii: O = Ofițer de serviciu, A = Ajutor OSU, PCT = Sergent de serviciu PCT, Pl = Planton, I = Intervenția (se afișează, dar nu intră în total), Op = Operator radio, P = Patrulă, R = Responsabil. Totalul roșu = cele mai multe servicii, verde = cele mai puține. Statusuri afișate: CONC = Concediu, ZL = Zi liberă, DEPL = Deplasare, BOALĂ = Foaie de boală, SPIT = Spitalul militar, STUD = Studii, DUPĂ = După serviciu. Statusul Prezent la serviciu nu se afișează.
       </div>
     </div>
   );

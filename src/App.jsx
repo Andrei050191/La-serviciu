@@ -10,6 +10,7 @@ import ConectareTelegram from './ConectareTelegram';
 import TelegramAdminPage from './TelegramAdminPage';
 import ServiciileMele from './ServiciileMele';
 import CalendarInterval from './CalendarInterval';
+import GraficeServiciiPage from './GraficeServiciiPage';
 import AnunturiAdminPage from './AnunturiAdminPage';
 import { STATUSURI_ABSENTA, serviciiPlanificateInZile, textConflict } from './verificareServicii';
 
@@ -513,7 +514,7 @@ function App() {
     .replace('setari', 'setări')
     .replace('luna', 'luna');
 
-  const paginiDinSetari = ['luna', 'reguli', 'efectiv', 'istoric', 'telegram', 'anunturi'];
+  const paginiDinSetari = ['luna', 'reguli', 'efectiv', 'istoric', 'telegram', 'anunturi', 'grafice'];
   const arataInapoiSetari = userLogat?.rol === 'admin' && paginiDinSetari.includes(paginaCurenta);
 
   if (paginaCurenta === 'login') {
@@ -622,11 +623,13 @@ function App() {
                 onOpenEfectiv={() => setPaginaCurenta('efectiv')}
                 onOpenTelegram={telegramActiv ? () => setPaginaCurenta('telegram') : undefined}
                 onOpenAnunturi={() => setPaginaCurenta('anunturi')}
+                onOpenGrafice={() => setPaginaCurenta('grafice')}
               />
             )}
             {paginaCurenta === 'istoric' && <IstoricPage />}
             {paginaCurenta === 'telegram' && <TelegramAdminPage onLog={scrieIstoric} persoanaId={esteAdminPersonal ? userLogat.id : null} />}
             {paginaCurenta === 'anunturi' && <AnunturiAdminPage onLog={scrieIstoric} />}
+            {paginaCurenta === 'grafice' && <GraficeServiciiPage onLog={scrieIstoric} />}
             
             {paginaCurenta === 'lista' && (
               <div className="space-y-4">
