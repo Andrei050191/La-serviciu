@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical, CalendarDays, ShieldAlert, Users } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, Save, Plus, Pencil, Trash2, History, X, GripVertical, CalendarDays, ShieldAlert, Users, Send, Megaphone } from 'lucide-react';
 import { normalizeServiciiConfigurate, pozitieMaximaServicii } from './serviciiConfig';
 
-const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, onOpenEfectiv }) => {
+const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, onOpenEfectiv, onOpenTelegram, onOpenAnunturi }) => {
   const [serviciiZilnic, setServiciiZilnic] = useState({});
   const [serviciiConfigurate, setServiciiConfigurate] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -291,11 +291,13 @@ const SetariServiciiPage = ({ onLog, onOpenIstoric, onOpenLuna, onOpenReguli, on
           </div>
 
           <div className="grid grid-cols-1 gap-3">
+            {onOpenAnunturi && butonMeniu('Anunțuri', 'Trimite un mesaj pe Telegram la toți', <Megaphone size={22} />, onOpenAnunturi)}
             {onOpenLuna && butonMeniu('Răspândirea lunară a efectivului', 'Tabel lunar cu servicii și statusuri', <CalendarDays size={22} />, onOpenLuna)}
             {onOpenReguli && butonMeniu('Eligibilitate', 'Cine are voie pe fiecare serviciu', <ShieldAlert size={22} />, onOpenReguli)}
             {onOpenEfectiv && butonMeniu('Efectiv', 'Adaugă, modifică, dezactivează și schimbă ordinea persoanelor', <Users size={22} />, onOpenEfectiv)}
             {butonMeniu('Gestionare servicii', 'Adaugă, modifică, șterge și schimbă ordinea', <GripVertical size={22} />, () => setSectiune('gestionare_servicii'))}
             {butonMeniu('Setări servicii', 'Permite sau oprește serviciu în zile consecutive', <Settings size={22} />, () => setSectiune('setari_servicii'))}
+            {onOpenTelegram && butonMeniu('Telegram', 'Raport zilnic pentru admin și memento de seară', <Send size={22} />, onOpenTelegram)}
             {onOpenIstoric && butonMeniu('Istoric modificări', 'Vezi ultimele modificări făcute în aplicație', <History size={22} />, onOpenIstoric)}
           </div>
         </div>

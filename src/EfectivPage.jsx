@@ -11,6 +11,8 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { Plus, Save, X, Pencil, UserCheck, UserX, Trash2, GripVertical } from 'lucide-react';
+import { numeCompletDin } from './serviciiConfig';
+import { propagaRedenumire } from './redenumire';
 
 const formularGol = {
   grad: '',
@@ -18,7 +20,8 @@ const formularGol = {
   nume: '',
   cod: '',
   ordine: 1,
-  activ: true
+  activ: true,
+  esteAdmin: false
 };
 
 const EfectivPage = ({ onLog }) => {
@@ -71,7 +74,8 @@ const EfectivPage = ({ onLog }) => {
       nume: p.nume || '',
       cod: p.cod || '',
       ordine: p.ordine || 1,
-      activ: p.activ !== false
+      activ: p.activ !== false,
+      esteAdmin: p.esteAdmin === true
     });
     setShowForm(true);
   };
@@ -104,17 +108,36 @@ const EfectivPage = ({ onLog }) => {
       nume: formular.nume.trim(),
       cod: codNou,
       ordine: Number(formular.ordine) || 1,
-      activ: formular.activ !== false
+      activ: formular.activ !== false,
+      esteAdmin: formular.esteAdmin === true
     };
+
+    const numeNou = numeCompletDin(dateSalvare);
+    const numeDublat = personal.some(p => p.id !== idEditare && numeCompletDin(p) === numeNou);
+    if (numeDublat) {
+      alert("Există deja o persoană cu același grad, prenume și nume. Planificarea s-ar încurca între ele.");
+      return;
+    }
 
     if (idEditare) {
       const vechi = personal.find(p => p.id === idEditare);
       await updateDoc(doc(db, "echipa", idEditare), dateSalvare);
+
+      const numeVechi = vechi ? numeCompletDin(vechi) : '';
+      if (numeVechi && numeVechi !== numeNou) {
+        try {
+          await propagaRedenumire(numeVechi, numeNou);
+        } catch (e) {
+          console.error(e);
+          alert("Persoana a fost salvată, dar nu am putut actualiza numele în calendar/eligibilitate (verifică conexiunea la internet).");
+        }
+      }
       await logLocal("Modificare persoană", {
         inainte: vechi ? numePentruIstoric(vechi) : null,
         dupa: numePentruIstoric(dateSalvare),
         ordine: dateSalvare.ordine,
-        activ: dateSalvare.activ
+        activ: dateSalvare.activ,
+        administrator: dateSalvare.esteAdmin ? 'Da' : 'Nu'
       }, { id: idEditare, ...dateSalvare });
     } else {
       const ref = await addDoc(collection(db, "echipa"), dateSalvare);
@@ -324,6 +347,22 @@ const EfectivPage = ({ onLog }) => {
                   {formular.activ ? "Activ" : "Inactiv"}
                 </button>
               </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-[9px] font-black uppercase text-slate-500 ml-2">
+                  Administrator
+                </label>
+                <button
+                  onClick={() => schimbaCamp("esteAdmin", !formular.esteAdmin)}
+                  className={`w-full p-4 rounded-2xl text-sm font-black uppercase border ${
+                    formular.esteAdmin
+                      ? 'bg-amber-600/20 border-amber-500 text-amber-300'
+                      : 'bg-slate-900 border-slate-800 text-slate-500'
+                  }`}
+                >
+                  {formular.esteAdmin ? "Da — intră ca administrator" : "Nu — utilizator obișnuit"}
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -400,6 +439,18 @@ const EfectivPage = ({ onLog }) => {
                     }`}>
                       {activ ? "Activ" : "Inactiv"}
                     </span>
+
+                    {p.esteAdmin && (
+                      <span className="bg-amber-600/20 text-amber-300 px-2 py-1 rounded-lg text-[9px] font-black uppercase">
+                        Admin
+                      </span>
+                    )}
+
+                    {p.telegramChatId && (
+                      <span className="bg-sky-600/20 text-sky-300 px-2 py-1 rounded-lg text-[9px] font-black uppercase">
+                        Telegram ✓
+                      </span>
+                    )}
                   </div>
                   </div>
                 </div>

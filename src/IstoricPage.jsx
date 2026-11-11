@@ -24,7 +24,7 @@ const IstoricPage = () => {
     try {
       const data = item.createdAt?.toDate ? item.createdAt.toDate() : new Date(item.dataClient);
       return data.toLocaleString('ro-RO');
-    } catch (e) {
+    } catch {
       return item.dataClient || '—';
     }
   };

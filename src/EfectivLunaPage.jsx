@@ -4,7 +4,7 @@ import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { addMonths, eachDayOfInterval, endOfMonth, format, isToday, startOfMonth, subMonths } from 'date-fns';
 import { ro } from 'date-fns/locale';
 import { CalendarDays, ChevronLeft, ChevronRight, Copy, UserCheck } from 'lucide-react';
-import { normalizeServiciiConfigurate } from './serviciiConfig';
+import { normalizeServiciiConfigurate, numarInterventieDin } from './serviciiConfig';
 
 const prescurtari = {
   'Ajutor OSU': 'A.OSU',
@@ -25,6 +25,8 @@ const statusPrescurtari = {
   'Concediu': 'CONC',
   'Deplasare': 'DEPL',
   'Foaie de boala': 'BOALĂ',
+  'Spitalul militar': 'SPIT',
+  'Studii': 'STUD',
   'Foaie de boală': 'BOALĂ',
   'Nespecificat': '',
   'Prezent la serviciu': ''
@@ -37,6 +39,8 @@ const statusCulori = {
   'Concediu': 'bg-purple-700 text-white',
   'Deplasare': 'bg-orange-700 text-white',
   'Foaie de boala': 'bg-red-700 text-white',
+  'Spitalul militar': 'bg-rose-900 text-white',
+  'Studii': 'bg-teal-800 text-white',
   'Foaie de boală': 'bg-red-700 text-white'
 };
 
@@ -110,21 +114,49 @@ const EfectivLunaPage = () => {
     return status;
   };
 
+  const prescurtare = (s) => {
+    if (prescurtari[s]) return prescurtari[s];
+    const nr = numarInterventieDin(s);
+    return nr ? `INT${nr}` : s;
+  };
+
   const continutCelula = (persoana, data) => {
-    const serv = serviciiPentruPersoanaInZi(persoana, data).map(s => prescurtari[s] || s);
+    const serv = serviciiPentruPersoanaInZi(persoana, data).map(prescurtare);
     const status = statusPentruPersoanaInZi(persoana, data);
     const statusScurt = status ? (statusPrescurtari[status] || status) : '';
     return [...serv, ...(statusScurt ? [statusScurt] : [])];
   };
 
+  // Intervenția se afișează în tabel, dar NU intră în calculul serviciilor.
+  const seNumara = (numeServiciu) => !numarInterventieDin(numeServiciu);
+
   const totalServicii = (persoana) => {
-    return zileLuna.reduce((total, data) => total + serviciiPentruPersoanaInZi(persoana, data).length, 0);
+    return zileLuna.reduce((total, data) => total + serviciiPentruPersoanaInZi(persoana, data).filter(seNumara).length, 0);
+  };
+
+  // --- Repartizare echitabilă ---
+  const totaluri = personal.map(p => ({ p, total: totalServicii(p) }));
+  const valori = totaluri.map(t => t.total);
+  const maxim = valori.length ? Math.max(...valori) : 0;
+  const minim = valori.length ? Math.min(...valori) : 0;
+  const medie = valori.length ? valori.reduce((a, b) => a + b, 0) / valori.length : 0;
+  const existaDiferenta = maxim > minim;
+  const numeCu = (valoare) => totaluri.filter(t => t.total === valoare).map(t => afiseazaNumeFrumos(t.p));
+
+  const culoareTotal = (total) => {
+    if (!existaDiferenta) return 'text-white';
+    if (total === maxim) return 'bg-red-600/30 text-red-200';
+    if (total === minim) return 'bg-green-600/20 text-green-200';
+    return 'text-white';
   };
 
   const totalZi = (data) => {
     const key = format(data, 'dd.MM.yyyy');
     const oameni = calendar[key]?.oameni || [];
-    return oameni.filter(om => om && om !== 'Din altă subunitate').length;
+    return serviciiActive
+      .filter(s => seNumara(s.nume))
+      .filter(s => oameni[s.pozitie] && oameni[s.pozitie] !== 'Din altă subunitate')
+      .length;
   };
 
   const copiazaTabel = async () => {
@@ -143,7 +175,7 @@ const EfectivLunaPage = () => {
     try {
       await navigator.clipboard.writeText(text);
       alert('Tabelul lunar a fost copiat.');
-    } catch (e) {
+    } catch {
       alert('Nu am putut copia automat.');
     }
   };
@@ -202,6 +234,34 @@ const EfectivLunaPage = () => {
             <Copy size={16} /> Copiază tabel
           </button>
         </div>
+
+        {personal.length > 0 && (
+          <div className="mt-5 bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Repartizare servicii în lună</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-slate-900 rounded-xl p-3">
+                <p className="text-[9px] font-black uppercase text-slate-500">Media</p>
+                <p className="text-xl font-black text-white">{medie.toFixed(1)}</p>
+              </div>
+              <div className="bg-red-600/20 rounded-xl p-3">
+                <p className="text-[9px] font-black uppercase text-red-300">Cele mai multe</p>
+                <p className="text-xl font-black text-red-200">{maxim}</p>
+              </div>
+              <div className="bg-green-600/20 rounded-xl p-3">
+                <p className="text-[9px] font-black uppercase text-green-300">Cele mai puține</p>
+                <p className="text-xl font-black text-green-200">{minim}</p>
+              </div>
+            </div>
+            {existaDiferenta ? (
+              <div className="text-[11px] font-bold leading-relaxed space-y-1">
+                <p className="text-red-300">Cele mai multe ({maxim}): {numeCu(maxim).join(', ')}</p>
+                <p className="text-green-300">Cele mai puține ({minim}): {numeCu(minim).join(', ')}</p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400 font-bold">Toți au același număr de servicii.</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden">
@@ -249,7 +309,7 @@ const EfectivLunaPage = () => {
                             <div className="inline-flex flex-col gap-1">
                               {serv.map(s => (
                                 <span key={s} className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-1 rounded-lg leading-none">
-                                  {prescurtari[s] || s}
+                                  {prescurtare(s)}
                                 </span>
                               ))}
                               {status && (
@@ -264,7 +324,7 @@ const EfectivLunaPage = () => {
                         </td>
                       );
                     })}
-                    <td className="p-3 text-center font-black text-white">{total}</td>
+                    <td className={`p-3 text-center font-black ${culoareTotal(total)}`}>{total}</td>
                   </tr>
                 );
               })}
@@ -287,7 +347,7 @@ const EfectivLunaPage = () => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-[11px] text-slate-400 font-bold leading-relaxed">
-        Prescurtări: A.OSU = Ajutor OSU, PCT = Sergent de serviciu PCT, PL = Planton, PATRU = Patrulă, RADIO = Operator radio, INT1/INT2 = Intervenția, RESP = Responsabil. Statusuri afișate: CONC = Concediu, ZL = Zi liberă, DEPL = Deplasare, BOALĂ = Foaie de boală, DUPĂ = După serviciu. Statusul Prezent la serviciu nu se afișează.
+        Prescurtări: A.OSU = Ajutor OSU, PCT = Sergent de serviciu PCT, PL = Planton, PATRU = Patrulă, RADIO = Operator radio, INT1/INT2/INT3... = Intervenția 1/2/3... (se afișează, dar nu intră în total), totalul roșu = cele mai multe servicii, verde = cele mai puține, RESP = Responsabil. Statusuri afișate: CONC = Concediu, ZL = Zi liberă, DEPL = Deplasare, BOALĂ = Foaie de boală, SPIT = Spitalul militar, STUD = Studii, DUPĂ = După serviciu. Statusul Prezent la serviciu nu se afișează.
       </div>
     </div>
   );

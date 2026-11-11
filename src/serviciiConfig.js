@@ -50,3 +50,30 @@ export const pozitieMaximaServicii = (lista) => {
   const servicii = normalizeServiciiConfigurate(lista);
   return servicii.reduce((max, s) => Math.max(max, s.pozitie), servicii.length - 1) + 1;
 };
+
+
+// --- Utilitare comune (folosite de funcțiile noi) ---
+
+// Numele complet exact cum este salvat în calendar, eligibilitate și notificări.
+export const numeCompletDin = (p) => `${p?.grad || ''} ${p?.prenume || ''} ${p?.nume || ''}`.trim().toUpperCase();
+
+export const numarInterventieDin = (nume = '') => {
+  const match = String(nume).match(/^Intervenția\s+(\d+)$/i);
+  return match ? Number(match[1]) : null;
+};
+
+export const numeFrumos = (p) => {
+  if (!p) return '';
+  const grad = (p.grad || '').split(' ').map(c => /^[IVXLC]+$/i.test(c) ? c.toUpperCase() : c.toLowerCase()).join(' ');
+  const prenume = p.prenume ? p.prenume.charAt(0).toUpperCase() + p.prenume.slice(1).toLowerCase() : '';
+  const nume = (p.nume || '').toUpperCase();
+  return `${grad} ${prenume} ${nume}`.trim();
+};
+
+// Serviciile (după nume) pe care le are o persoană într-o zi din calendar.
+export const serviciiPersoanaInZi = (ziCalendar, numeComplet, serviciiActive) => {
+  const oameni = ziCalendar?.oameni || [];
+  return serviciiActive
+    .filter(s => oameni[s.pozitie] === numeComplet)
+    .map(s => s.nume);
+};

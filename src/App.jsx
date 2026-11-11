@@ -1,14 +1,28 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from './firebase';
 import { 
-  collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, serverTimestamp, where 
+  collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, serverTimestamp, deleteField
 } from 'firebase/firestore';
-import { format, addDays } from 'date-fns';
+import { telegramActiv, trimiteTelegram } from './telegram';
+import { useConectareTelegram } from './useConectareTelegram';
+import { ruleazaSarciniTelegram, setariTelegramComplete, trimiteRaportAdminilor } from './telegramAutomat';
+import ConectareTelegram from './ConectareTelegram';
+import TelegramAdminPage from './TelegramAdminPage';
+import ServiciileMele from './ServiciileMele';
+import CalendarInterval from './CalendarInterval';
+import AnunturiAdminPage from './AnunturiAdminPage';
+import { STATUSURI_ABSENTA, serviciiPlanificateInZile, textConflict } from './verificareServicii';
+
+// Statusurile care se pot pune pe mai multe zile odată.
+const STATUSURI_MULTI_ZILE = ['Concediu', 'Deplasare', 'Foaie de boala', 'Spitalul militar', 'Studii'];
+import { numeFrumos as formatNumeSimplu } from './serviciiConfig';
+import { format, addDays, parse, parseISO, differenceInCalendarDays } from 'date-fns';
+import { useZiCurenta } from './useZiCurenta';
 import { ro } from 'date-fns/locale';
 import { 
   Activity, Briefcase, Umbrella, Coffee, Home, MapPin, 
-  Stethoscope, CalendarDays, Utensils, Check, Lock, LogOut, 
-  Shield, X, ExternalLink, ChevronDown, ChevronUp, Search, FileText, Copy, Bell, CheckCheck
+  Stethoscope, Hospital, GraduationCap, CalendarDays, Utensils, Check, Lock, LogOut, 
+  Shield, X, ExternalLink, ChevronDown, ChevronUp, Search, FileText, Copy, Send
 } from 'lucide-react';
 
 import ServiciiPage from './ServiciiPage';
@@ -26,6 +40,8 @@ const statusConfig = {
   "Concediu": { color: "bg-purple-600", icon: <Umbrella size={20} /> },
   "Deplasare": { color: "bg-orange-600", icon: <MapPin size={20} /> },
   "Foaie de boala": { color: "bg-red-600", icon: <Stethoscope size={20} /> },
+  "Spitalul militar": { color: "bg-rose-800", icon: <Hospital size={20} /> },
+  "Studii": { color: "bg-teal-700", icon: <GraduationCap size={20} /> },
 };
 
 function App() {
@@ -43,22 +59,27 @@ function App() {
   const [tentativeGresite, setTentativeGresite] = useState(0);
   const [blocatPana, setBlocatPana] = useState(null);
   
-  const [showConcediuSelect, setShowConcediuSelect] = useState(false);
-  const [numarZileConcediu, setNumarZileConcediu] = useState(1);
-  const [showDeplasareSelect, setShowDeplasareSelect] = useState(false);
-  const [numarZileDeplasare, setNumarZileDeplasare] = useState(1);
-  const [notificari, setNotificari] = useState([]);
+  // Selectorul „câte zile” deschis: cheie `${persoanaId}|${status}` (un singur selector deschis odată).
+  const [multiDeschis, setMultiDeschis] = useState(null);
+  const [deLa, setDeLa] = useState('');   // yyyy-MM-dd
+  const [panaLa, setPanaLa] = useState('');
+  const [setariTelegram, setSetariTelegram] = useState({});
+  const [echipaIncarcata, setEchipaIncarcata] = useState(false);
 
   // Funcție utilitară pentru vibrație
   const vibreaza = (ms = 40) => {
     if (navigator.vibrate) navigator.vibrate(ms);
   };
 
-  const optiuniZile = useMemo(() => [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
-    const d = addDays(new Date(), i);
-    let label = i === 0 ? "Azi" : i === 1 ? "Mâine" : format(d, 'eeee', { locale: ro });
-    return { label, data: d, key: format(d, 'yyyyMMdd') };
-  }), []);
+  const ziCurenta = useZiCurenta();
+  const optiuniZile = useMemo(() => {
+    const azi = parse(ziCurenta, 'yyyyMMdd', new Date());
+    return [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
+      const d = addDays(azi, i);
+      let label = i === 0 ? "Azi" : i === 1 ? "Mâine" : format(d, 'eeee', { locale: ro });
+      return { label, data: d, key: format(d, 'yyyyMMdd') };
+    });
+  }, [ziCurenta]);
 
   const ziKey = optiuniZile[ziSelectata].key;
 
@@ -90,49 +111,33 @@ function App() {
   };
 
 
-  const numeCompletPentruNotificari = (m) => {
-    if (!m) return '';
-    return `${m.grad || ''} ${m.prenume || ''} ${m.nume || ''}`.trim().toUpperCase();
+  // Datele „vii” ale utilizatorului logat (nu cele salvate la login în localStorage),
+  // ca după o redenumire să se vadă numele nou și să vină notificările corecte.
+  // Pentru admin-ul general (parola 0000) nu există persoană în efectiv (fără id).
+  const userLive = userLogat?.id
+    ? (echipa.find(e => e.id === userLogat.id) || userLogat)
+    : userLogat;
+  const esteAdminPersonal = userLogat?.rol === 'admin' && Boolean(userLogat?.id);
+
+  // --- TELEGRAM ---
+  const userId = userLogat?.rol === 'user' ? userLogat.id : null;
+
+  const conectareTelegram = useConectareTelegram(async (chatId) => {
+    await updateDoc(doc(db, "echipa", userId), { telegramChatId: chatId });
+    await trimiteTelegram(chatId, '✅ Te-ai conectat. Aici vei primi notificările despre servicii.');
+  });
+
+  const deconecteazaTelegram = async () => {
+    vibreaza(40);
+    await updateDoc(doc(db, "echipa", userId), { telegramChatId: deleteField() });
   };
 
   useEffect(() => {
-    if (userLogat?.rol !== 'user') {
-      setNotificari([]);
-      return;
-    }
-
-    const numeComplet = numeCompletPentruNotificari(userLogat);
-    if (!numeComplet) return;
-
-    const q = query(
-      collection(db, "notificari"),
-      where("userNumeComplet", "==", numeComplet),
-      where("citit", "==", false)
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      lista.sort((a, b) => {
-        const da = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.dataClient || 0).getTime();
-        const dbb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.dataClient || 0).getTime();
-        return dbb - da;
-      });
-      setNotificari(lista);
+    const unsub = onSnapshot(doc(db, "setari", "telegram"), (snap) => {
+      setSetariTelegram(snap.exists() ? snap.data() : {});
     });
-
     return () => unsub();
-  }, [userLogat?.id, userLogat?.rol]);
-
-  const marcheazaNotificareCitita = async (id) => {
-    await updateDoc(doc(db, "notificari", id), {
-      citit: true,
-      cititLa: serverTimestamp()
-    });
-  };
-
-  const marcheazaToateNotificarileCitite = async () => {
-    await Promise.all(notificari.map(n => marcheazaNotificareCitita(n.id)));
-  };
+  }, []);
 
   useEffect(() => {
     const unsubServicii = onSnapshot(doc(db, "planificare", "servicii"), (d) => {
@@ -154,9 +159,23 @@ function App() {
     const q = query(collection(db, "echipa"), orderBy("ordine", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setEchipa(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.activ !== false));
+      setEchipaIncarcata(true);
     });
     return () => unsubscribe();
   }, []);
+
+  // Dacă admin-ul dezactivează/șterge persoana sau îi schimbă parola, sesiunea se închide.
+  useEffect(() => {
+    if (!userLogat?.id || !echipaIncarcata) return;
+    const eu = echipa.find(e => e.id === userLogat.id);
+    // Se închide și când admin-ului i se dă sau i se ia dreptul de administrator.
+    const dreptSchimbat = (userLogat.rol === 'admin') !== (eu?.esteAdmin === true);
+    if (!eu || String(eu.cod) !== String(userLogat.cod) || dreptSchimbat) {
+      localStorage.removeItem('userEfectiv');
+      setUserLogat(null);
+      setPaginaCurenta('login');
+    }
+  }, [echipa, echipaIncarcata, userLogat]);
 
   const login = (cod) => {
     if (blocatPana && Date.now() < blocatPana) {
@@ -175,16 +194,18 @@ function App() {
       return;
     }
 
+    if (!echipaIncarcata) return; // lista încă se încarcă — nu numărăm ca încercare greșită
+
     const gasit = echipa.find(m => String(m.cod) === String(cod) && m.activ !== false);
 
     if (gasit) {
       vibreaza(60);
-      const u = { ...gasit, rol: 'user' };
+      const u = { ...gasit, rol: gasit.esteAdmin === true ? 'admin' : 'user' };
       setUserLogat(u);
       setTentativeGresite(0);
       setEroareLogin(false);
       localStorage.setItem('userEfectiv', JSON.stringify(u));
-      setPaginaCurenta('personal');
+      setPaginaCurenta(u.rol === 'admin' ? 'categorii' : 'personal');
     } else {
       vibreaza([50, 50, 50]);
       const nrNou = tentativeGresite + 1;
@@ -217,7 +238,9 @@ function App() {
         persoanaVizataId: persoanaVizata?.id || null,
         persoanaVizataNume: persoanaVizata ? numePentruIstoric(persoanaVizata) : null,
         facutDeId: userLogat?.id || null,
-        facutDeNume: userLogat?.rol === 'admin' ? 'Administrator' : numePentruIstoric(userLogat),
+        facutDeNume: !userLogat?.id
+          ? 'Administrator'
+          : `${numePentruIstoric(userLive)}${userLogat.rol === 'admin' ? ' (admin)' : ''}`,
         facutDeRol: userLogat?.rol || 'necunoscut',
         dataClient: new Date().toISOString(),
         createdAt: serverTimestamp()
@@ -227,12 +250,34 @@ function App() {
     }
   };
 
+  // Nu se poate pune concediu / zi liberă / deplasare / boală peste un serviciu planificat.
+  const [avertizare, setAvertizare] = useState('');
+  const esteBlocatDeServiciu = async (persoana, status, zile) => {
+    if (!persoana || !STATUSURI_ABSENTA.includes(status)) return false;
+    try {
+      const conflicte = await serviciiPlanificateInZile(persoana, zile);
+      if (!conflicte.length) {
+        setAvertizare('');
+        return false;
+      }
+      const eu = userLogat?.id && persoana.id === userLogat.id;
+      setAvertizare(textConflict(eu ? null : formatNumeSimplu(persoana), status, conflicte));
+      vibreaza([80, 60, 80]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return true;
+    } catch (e) {
+      console.warn('Verificare servicii:', e);
+      return false;
+    }
+  };
+
   const schimbaStatus = async (id, nouStatus) => {
     vibreaza(40);
     const ziKeyFiltru = optiuniZile[ziSelectata].key;
     const membru = echipa.find(m => m.id === id);
     const statusCurent = getStatusMembru(membru);
     if (statusCurent === "În serviciu" || statusCurent === "După serviciu") return;
+    if (await esteBlocatDeServiciu(membru, nouStatus, [optiuniZile[ziSelectata].data])) return;
     const updateObj = { [`status_${ziKeyFiltru}`]: nouStatus };
     if (nouStatus !== "Prezent la serviciu") {
       updateObj[`cantina_${ziKeyFiltru}`] = false;
@@ -246,44 +291,75 @@ function App() {
     setMembruEditat(null);
   };
 
-  const aplicaConcediuLung = async () => {
-    vibreaza(80);
-    const updates = {};
-    const dataStart = optiuniZile[ziSelectata].data; // Folosim data selectată de user
-    
-    for (let i = 0; i < numarZileConcediu; i++) {
-      const dataViitoare = addDays(dataStart, i);
-      const key = format(dataViitoare, 'yyyyMMdd');
-      updates[`status_${key}`] = "Concediu";
-      updates[`cantina_${key}`] = false;
+  // Concediu, deplasare, studii, spital, foaie de boală: pe o perioadă „De la – Până la”.
+  const zileInterval = (() => {
+    if (!deLa || !panaLa) return 0;
+    const n = differenceInCalendarDays(parseISO(panaLa), parseISO(deLa)) + 1;
+    return n > 0 ? n : 0;
+  })();
+
+  const aplicaStatusPeZile = async (persoana, status) => {
+    if (!persoana || !zileInterval) return;
+    if (zileInterval > 366) {
+      setAvertizare('Perioada este prea lungă (maxim 366 de zile).');
+      return;
     }
-    await updateDoc(doc(db, "echipa", userLogat.id), updates);
-    await scrieIstoric("Concediu aplicat", {
+    vibreaza(80);
+    const dataStart = parseISO(deLa);
+    const zile = Array.from({ length: zileInterval }, (_, i) => addDays(dataStart, i));
+    if (await esteBlocatDeServiciu(persoana, status, zile)) return;
+
+    const updates = {};
+    zile.forEach(d => {
+      const key = format(d, 'yyyyMMdd');
+      updates[`status_${key}`] = status;
+      updates[`cantina_${key}`] = false;
+    });
+
+    await updateDoc(doc(db, "echipa", persoana.id), updates);
+    await scrieIstoric("Status pe mai multe zile", {
+      status,
       dataStart: format(dataStart, 'dd.MM.yyyy'),
-      numarZile: numarZileConcediu
-    }, userLogat);
-    setShowConcediuSelect(false);
+      dataSfarsit: format(zile[zile.length - 1], 'dd.MM.yyyy'),
+      numarZile: zileInterval
+    }, persoana);
+    setMultiDeschis(null);
+    setMembruEditat(null);
   };
 
-  const aplicaDeplasareLunga = async () => {
-    vibreaza(80);
-    const updates = {};
-    const dataStart = optiuniZile[ziSelectata].data;
-
-    for (let i = 0; i < numarZileDeplasare; i++) {
-      const dataViitoare = addDays(dataStart, i);
-      const key = format(dataViitoare, 'yyyyMMdd');
-      updates[`status_${key}`] = "Deplasare";
-      updates[`cantina_${key}`] = false;
-    }
-
-    await updateDoc(doc(db, "echipa", userLogat.id), updates);
-    await scrieIstoric("Deplasare aplicată", {
-      dataStart: format(dataStart, 'dd.MM.yyyy'),
-      numarZile: numarZileDeplasare
-    }, userLogat);
-    setShowDeplasareSelect(false);
+  const comutaSelectorZile = (cheie) => {
+    vibreaza(40);
+    const start = format(optiuniZile[ziSelectata].data, 'yyyy-MM-dd');
+    setDeLa(start);
+    setPanaLa(start);
+    setMultiDeschis(multiDeschis === cheie ? null : cheie);
   };
+
+  const selectorZile = (persoana, status) => (
+    <div className="bg-slate-950 border-2 border-slate-700 p-5 rounded-[2rem] space-y-4 animate-in slide-in-from-top-4 duration-300">
+      <p className="text-center text-[10px] font-black uppercase text-slate-300">Perioada — {status}</p>
+      <CalendarInterval
+        deLa={deLa}
+        panaLa={panaLa}
+        onChange={(start, sfarsit) => { setDeLa(start); setPanaLa(sfarsit); }}
+      />
+      {deLa && panaLa && (
+        <p className="text-center text-[11px] font-bold text-slate-400">
+          De la <span className="text-white font-black">{format(parseISO(deLa), 'dd.MM.yyyy')}</span> până la <span className="text-white font-black">{format(parseISO(panaLa), 'dd.MM.yyyy')}</span>
+        </p>
+      )}
+      <p className="text-center text-sm font-black text-white">
+        {zileInterval ? `${zileInterval} ${zileInterval === 1 ? 'zi' : 'zile'}` : 'Alege datele'}
+      </p>
+      <button
+        disabled={!zileInterval}
+        onClick={() => aplicaStatusPeZile(persoana, status)}
+        className={`w-full ${statusConfig[status]?.color || 'bg-blue-600'} disabled:opacity-40 py-4 rounded-xl font-black uppercase text-sm active:scale-95 transition-transform`}
+      >
+        Aplică {status}{zileInterval ? ` (${zileInterval} ${zileInterval === 1 ? 'zi' : 'zile'})` : ''}
+      </button>
+    </div>
+  );
 
   const toggleCantina = async (id, stare) => {
     vibreaza(50);
@@ -295,13 +371,13 @@ function App() {
     }, membru);
   };
 
-  const getStatusMembru = (m) => {
+  const getStatusMembru = (m, key = ziKey) => {
     const realTimeMembru = echipa.find(e => e.id === m.id);
     if (!realTimeMembru) return "Prezent la serviciu";
-    const manual = realTimeMembru[`status_${ziKey}`];
-    const plan = serviciiPlan[ziKey] || {};
+    const manual = realTimeMembru[`status_${key}`];
+    const plan = serviciiPlan[key] || {};
     const esteInPlan = plan.responsabil === m.id || (plan.interventie && plan.interventie.includes(m.id));
-    if (manual === "Concediu" || manual === "Foaie de boala") return manual;
+    if (manual === "Concediu" || manual === "Foaie de boala" || manual === "Spitalul militar" || manual === "Studii") return manual;
     if (esteInPlan) return "În serviciu";
     return manual || "Prezent la serviciu";
   };
@@ -317,10 +393,12 @@ function App() {
 
   const nrLaCantina = echipa.filter(m => m[`cantina_${ziKey}`] === true).length;
 
-  const categorii = Object.keys(statusConfig).reduce((acc, status) => {
-    acc[status] = echipa.filter(m => getStatusMembru(m) === status);
+  const categoriiPentru = (key) => Object.keys(statusConfig).reduce((acc, status) => {
+    acc[status] = echipa.filter(m => getStatusMembru(m, key) === status);
     return acc;
   }, {});
+
+  const categorii = categoriiPentru(ziKey);
 
   const normalizeText = (txt = '') => txt.toString().toLowerCase().trim();
 
@@ -336,13 +414,6 @@ function App() {
     return normalizeText(`${m.grad || ''} ${m.prenume || ''} ${m.nume || ''} ${m.cod || ''}`).includes(q);
   });
 
-  const statisticiSumar = {
-    prezenti: categorii["Prezent la serviciu"]?.length || 0,
-    inServiciu: categorii["În serviciu"]?.length || 0,
-    dupaServiciu: categorii["După serviciu"]?.length || 0,
-    cantina: nrLaCantina
-  };
-
   const numePentruRaport = (m) => {
     const grad = m.grad || "";
     const prenume = m.prenume
@@ -353,12 +424,14 @@ function App() {
     return `${grad} ${prenume} ${nume}`.trim();
   };
 
-  const textRaport = () => {
-    const dataRaport = format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy');
+  const textRaport = (index = ziSelectata) => {
+    const { key, data } = optiuniZile[index];
+    const categoriiZi = categoriiPentru(key);
+    const dataRaport = format(data, 'dd.MM.yyyy');
     const linii = [`RAPORT EFECTIV`, `Data: ${dataRaport}`, ``];
 
     Object.keys(statusConfig).forEach(status => {
-      const oameni = categorii[status] || [];
+      const oameni = categoriiZi[status] || [];
 
       linii.push(`${status}: ${oameni.length}`);
 
@@ -373,7 +446,7 @@ function App() {
       linii.push(``);
     });
 
-    const oameniCantina = echipa.filter(m => m[`cantina_${ziKey}`] === true);
+    const oameniCantina = echipa.filter(m => m[`cantina_${key}`] === true);
 
     linii.push(`Masa la cantină: ${oameniCantina.length}`);
 
@@ -392,10 +465,45 @@ function App() {
     try {
       await navigator.clipboard.writeText(textRaport());
       alert('Raportul a fost copiat.');
-    } catch (e) {
+    } catch {
       alert('Nu am putut copia automat. Selectează textul și copiază manual.');
     }
   };
+
+  const [raportSeTrimite, setRaportSeTrimite] = useState(false);
+  const trimiteRaportTelegram = async () => {
+    vibreaza(40);
+    if (!setariTelegramComplete(setariTelegram).adminChatIds.length) {
+      alert('Niciun cont de administrator conectat. Mergi la Setări → Telegram și conectează-te.');
+      return;
+    }
+    setRaportSeTrimite(true);
+    try {
+      const nr = await trimiteRaportAdminilor(setariTelegram, textRaport());
+      alert(nr ? 'Raportul a fost trimis pe Telegram.' : 'Nu am putut trimite raportul pe Telegram.');
+    } finally {
+      setRaportSeTrimite(false);
+    }
+  };
+
+  // Raportul de dimineață și memento-ul de seară pornesc din aplicația oricui e logat.
+  const textRaportAziRef = useRef(null);
+  useEffect(() => {
+    textRaportAziRef.current = () => textRaport(0);
+  });
+
+  useEffect(() => {
+    if (!telegramActiv || !userLogat || !echipaIncarcata) return;
+    let oprit = false;
+    const ruleaza = () => {
+      if (oprit || !textRaportAziRef.current) return;
+      ruleazaSarciniTelegram({ setari: setariTelegram, textRaportAzi: textRaportAziRef.current })
+        .catch(e => console.warn('Sarcini Telegram:', e));
+    };
+    const timerStart = setTimeout(ruleaza, 5000);
+    const interval = setInterval(ruleaza, 5 * 60 * 1000);
+    return () => { oprit = true; clearTimeout(timerStart); clearInterval(interval); };
+  }, [userLogat, echipaIncarcata, setariTelegram]);
 
   const adminPages = ['categorii', 'cantina', 'lista', 'servicii', 'setari'];
 
@@ -405,24 +513,29 @@ function App() {
     .replace('setari', 'setări')
     .replace('luna', 'luna');
 
-  const paginiDinSetari = ['luna', 'reguli', 'efectiv', 'istoric'];
+  const paginiDinSetari = ['luna', 'reguli', 'efectiv', 'istoric', 'telegram', 'anunturi'];
   const arataInapoiSetari = userLogat?.rol === 'admin' && paginiDinSetari.includes(paginaCurenta);
 
   if (paginaCurenta === 'login') {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white">
-        <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 w-full max-w-sm text-center">
+        <form
+          onSubmit={(e) => { e.preventDefault(); login(inputCod); }}
+          className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 w-full max-w-sm text-center"
+        >
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><Lock size={32} /></div>
           <h1 className="text-2xl font-black uppercase mb-8 tracking-tighter">Acces Sistem</h1>
-          <input type="password" value={inputCod} onChange={(e) => setInputCod(e.target.value)}
+          <input type="password" value={inputCod} onChange={(e) => setInputCod(e.target.value)} autoFocus enterKeyHint="go"
             className="w-full bg-slate-950 border-2 border-slate-800 p-5 rounded-2xl text-center text-2xl focus:border-blue-500 outline-none mb-4 text-white" placeholder="Parolă" autoComplete="current-password" />
           {eroareLogin && (
             <div className="mb-4 p-3 rounded-2xl bg-red-950/40 border border-red-800 text-red-300 text-xs font-black uppercase">
-              {blocatPana && Date.now() < blocatPana ? 'Prea multe încercări. Așteaptă 10 secunde.' : 'Cod incorect sau utilizator inactiv.'}
+              {blocatPana ? 'Prea multe încercări. Așteaptă 10 secunde.' : 'Cod incorect sau utilizator inactiv.'}
             </div>
           )}
-          <button onClick={() => login(inputCod)} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase active:scale-95 transition-transform">Intră</button>
-        </div>
+          <button type="submit" disabled={!echipaIncarcata} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase active:scale-95 transition-transform disabled:opacity-50">
+            {echipaIncarcata ? 'Intră' : 'Se încarcă...'}
+          </button>
+        </form>
       </div>
     );
   }
@@ -433,10 +546,24 @@ function App() {
         <div className="flex justify-between items-center mb-6 bg-slate-900 p-5 rounded-3xl border border-slate-800">
           <div className="flex items-center gap-4">
             <div className="bg-blue-600 p-3 rounded-xl"><CalendarDays size={24} /></div>
-            <div>{userLogat?.rol === 'admin' ? <h1 className="text-lg font-black uppercase">Administrator</h1> : formatIdentitate(userLogat)}</div>
+            <div>
+              {userLogat?.rol === 'admin' && !esteAdminPersonal
+                ? <h1 className="text-lg font-black uppercase">Administrator</h1>
+                : formatIdentitate(userLive)}
+              {esteAdminPersonal && (
+                <span className="inline-block mt-1 bg-amber-600/20 text-amber-300 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase">Administrator</span>
+              )}
+            </div>
           </div>
           <button onClick={logout} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl"><LogOut size={24}/></button>
         </div>
+
+        {avertizare && (
+          <div className="mb-4 bg-red-950/50 border-2 border-red-600 rounded-2xl p-4 flex items-start justify-between gap-3">
+            <p className="text-xs font-black text-red-200 leading-relaxed">⚠️ {avertizare}</p>
+            <button onClick={() => setAvertizare('')} className="shrink-0 bg-red-900/60 p-2 rounded-xl active:scale-95"><X size={14} /></button>
+          </div>
+        )}
 
         <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
           {optiuniZile.map((zi, index) => (
@@ -448,46 +575,8 @@ function App() {
           ))}
         </div>
 
-
-        {userLogat?.rol === 'user' && notificari.length > 0 && (
-          <div className="mb-4 bg-blue-950/30 border border-blue-700/50 rounded-[2rem] p-4 shadow-xl">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-600 p-2.5 rounded-2xl text-white">
-                  <Bell size={18} />
-                </div>
-                <div>
-                  <p className="text-xs font-black uppercase text-blue-200 tracking-widest">Notificări noi</p>
-                  <p className="text-[10px] text-slate-400 font-bold">Modificări la servicii</p>
-                </div>
-              </div>
-              <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black text-white">{notificari.length}</span>
-            </div>
-
-            <div className="space-y-2 max-h-[208px] overflow-y-auto pr-1 overscroll-contain touch-pan-y">
-              {notificari.map((n) => (
-                <div key={n.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-3 min-h-[64px]">
-                  <p className="text-sm font-black text-white leading-snug">{n.mesaj}</p>
-                  {(n.functie || n.dataServiciu) && (
-                    <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
-                      {[n.functie, n.dataServiciu].filter(Boolean).join(' • ')}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={marcheazaToateNotificarileCitite}
-              className="mt-3 w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all rounded-2xl p-3 font-black uppercase text-xs flex items-center justify-center gap-2"
-            >
-              <CheckCheck size={16} />
-              Am înțeles
-            </button>
-          </div>
-        )}
-
         <div className="space-y-3 mb-8">
+          {((userLogat?.rol === 'user' && paginaCurenta !== 'servicii') || (esteAdminPersonal && paginaCurenta === 'categorii')) && <ServiciileMele persoana={userLive} />}
           {userLogat?.rol === 'user' && (
             <button onClick={() => { vibreaza(40); setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii'); }} 
               className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl active:scale-[0.98] transition-all">
@@ -510,7 +599,7 @@ function App() {
               ))}
             </div>
 
-            {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} />}
+            {paginaCurenta === 'servicii' && <ServiciiPage editabil={true} onLog={scrieIstoric} />}
 
             {arataInapoiSetari && (
               <button
@@ -531,9 +620,13 @@ function App() {
                 onOpenLuna={() => setPaginaCurenta('luna')}
                 onOpenReguli={() => setPaginaCurenta('reguli')}
                 onOpenEfectiv={() => setPaginaCurenta('efectiv')}
+                onOpenTelegram={telegramActiv ? () => setPaginaCurenta('telegram') : undefined}
+                onOpenAnunturi={() => setPaginaCurenta('anunturi')}
               />
             )}
             {paginaCurenta === 'istoric' && <IstoricPage />}
+            {paginaCurenta === 'telegram' && <TelegramAdminPage onLog={scrieIstoric} persoanaId={esteAdminPersonal ? userLogat.id : null} />}
+            {paginaCurenta === 'anunturi' && <AnunturiAdminPage onLog={scrieIstoric} />}
             
             {paginaCurenta === 'lista' && (
               <div className="space-y-4">
@@ -562,10 +655,24 @@ function App() {
                         </div>
                       </button>
                       {isEditing && (
-                        <div className="grid grid-cols-2 gap-2 p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl">
-                          {Object.keys(statusConfig).map(st => (
-                            <button key={st} onClick={() => schimbaStatus(m.id, st)} className="flex items-center gap-2 p-3 rounded-xl bg-slate-900 text-white text-[9px] font-black uppercase border border-slate-800 active:bg-slate-800">{statusConfig[st].icon} {st}</button>
-                          ))}
+                        <div className="p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl space-y-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.keys(statusConfig).map(st => {
+                              const multi = STATUSURI_MULTI_ZILE.includes(st);
+                              const deschis = multiDeschis === `${m.id}|${st}`;
+                              return (
+                                <button
+                                  key={st}
+                                  onClick={() => multi ? comutaSelectorZile(`${m.id}|${st}`) : schimbaStatus(m.id, st)}
+                                  className={`flex items-center gap-2 p-3 rounded-xl text-white text-[9px] font-black uppercase border active:bg-slate-800 ${deschis ? `${statusConfig[st].color} border-white/40` : 'bg-slate-900 border-slate-800'}`}
+                                >
+                                  {statusConfig[st].icon} {st}
+                                  {multi && <span className="ml-auto">{deschis ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {multiDeschis?.startsWith(`${m.id}|`) && selectorZile(m, multiDeschis.split('|')[1])}
                         </div>
                       )}
                     </div>
@@ -629,6 +736,16 @@ function App() {
                         <Copy size={16} />
                         Copiază raportul
                       </button>
+                      {telegramActiv && (
+                        <button
+                          onClick={trimiteRaportTelegram}
+                          disabled={raportSeTrimite}
+                          className="mt-3 w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-50 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
+                        >
+                          <Send size={16} />
+                          {raportSeTrimite ? 'Se trimite...' : 'Trimite pe Telegram'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -655,7 +772,7 @@ function App() {
                     <h2 className="text-xs font-black uppercase text-blue-400 tracking-widest">Editare Servicii</h2>
                     <button onClick={() => { vibreaza(30); setPaginaCurenta('personal'); }} className="text-[10px] font-black bg-slate-800 px-4 py-2 rounded-xl italic">Înapoi</button>
                  </div>
-                 <ServiciiPage editabil={true} />
+                 <ServiciiPage editabil={true} onLog={scrieIstoric} />
               </div>
             ) : (
               <>
@@ -668,63 +785,24 @@ function App() {
                       const esteStatusDeServiciu = st === "În serviciu" || st === "După serviciu";
                       const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu" || esteStatusDeServiciu;
                       
-                      if (st === "Concediu") {
+                      if (STATUSURI_MULTI_ZILE.includes(st)) {
+                        const cheie = `${userLogat.id}|${st}`;
+                        const deschis = multiDeschis === cheie;
                         return (
                           <div key={st} className="flex flex-col gap-2">
-                            <button disabled={esteBlocat} onClick={() => { vibreaza(40); setShowConcediuSelect(!showConcediuSelect); setShowDeplasareSelect(false); }} 
-                              className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
-                                ${activ ? 'bg-purple-600 text-white border-purple-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
+                            <button disabled={esteBlocat} onClick={() => comutaSelectorZile(cheie)}
+                              className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all
+                                ${activ ? `${statusConfig[st].color} text-white border-white/40 shadow-lg` : 'bg-slate-950 border-slate-800 text-white opacity-70'}
                                 ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
-                              <div className={`p-2 rounded-lg ${activ ? 'bg-white text-purple-600' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
+                              <div className={`p-2 rounded-lg ${activ ? 'bg-white/90 text-black' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
                               <span className="text-sm uppercase font-black text-left">{st}</span>
                               <div className="ml-auto flex items-center gap-2">
                                 {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
                                 {esteBlocat && <Lock size={20} />}
-                                {!esteBlocat && (showConcediuSelect ? <ChevronUp size={20}/> : <ChevronDown size={20}/>)}
+                                {!esteBlocat && (deschis ? <ChevronUp size={20}/> : <ChevronDown size={20}/>)}
                               </div>
                             </button>
-                            {showConcediuSelect && !esteBlocat && (
-                              <div className="bg-slate-950 border-2 border-purple-500/50 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
-                                 <p className="text-center text-[10px] font-black uppercase text-purple-400 mb-4">Câte zile pleci în concediu?</p>
-                                 <div className="flex items-center justify-between mb-6">
-                                   <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.max(1, numarZileConcediu - 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
-                                   <span className="text-4xl font-black">{numarZileConcediu}</span>
-                                   <button onClick={() => { vibreaza(20); setNumarZileConcediu(Math.min(45, numarZileConcediu + 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
-                                 </div>
-                                 <button onClick={aplicaConcediuLung} className="w-full bg-purple-600 py-4 rounded-xl font-black uppercase text-sm active:scale-95 transition-transform">Aplică Concediul</button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-
-
-                      if (st === "Deplasare") {
-                        return (
-                          <div key={st} className="flex flex-col gap-2">
-                            <button disabled={esteBlocat} onClick={() => { vibreaza(40); setShowDeplasareSelect(!showDeplasareSelect); setShowConcediuSelect(false); }}
-                              className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all 
-                                ${activ ? 'bg-orange-600 text-white border-orange-400 shadow-lg' : 'bg-slate-950 border-slate-800 text-white opacity-70'}
-                                ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
-                              <div className={`p-2 rounded-lg ${activ ? 'bg-white text-orange-600' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                              <span className="text-sm uppercase font-black text-left">{st}</span>
-                              <div className="ml-auto flex items-center gap-2">
-                                {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
-                                {esteBlocat && <Lock size={20} />}
-                                {!esteBlocat && (showDeplasareSelect ? <ChevronUp size={20}/> : <ChevronDown size={20}/>) }
-                              </div>
-                            </button>
-                            {showDeplasareSelect && !esteBlocat && (
-                              <div className="bg-slate-950 border-2 border-orange-500/50 p-6 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
-                                 <p className="text-center text-[10px] font-black uppercase text-orange-400 mb-4">Câte zile pleci în deplasare?</p>
-                                 <div className="flex items-center justify-between mb-6">
-                                   <button onClick={() => { vibreaza(20); setNumarZileDeplasare(Math.max(1, numarZileDeplasare - 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">-</button>
-                                   <span className="text-4xl font-black">{numarZileDeplasare}</span>
-                                   <button onClick={() => { vibreaza(20); setNumarZileDeplasare(Math.min(45, numarZileDeplasare + 1)); }} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center font-black">+</button>
-                                 </div>
-                                 <button onClick={aplicaDeplasareLunga} className="w-full bg-orange-600 py-4 rounded-xl font-black uppercase text-sm active:scale-95 transition-transform">Aplică deplasarea</button>
-                              </div>
-                            )}
+                            {deschis && !esteBlocat && selectorZile(userLive, st)}
                           </div>
                         );
                       }
@@ -767,6 +845,31 @@ function App() {
                     );
                   })()}
                 </div>
+
+                {telegramActiv && (() => {
+                  const eu = echipa.find(e => e.id === userLogat.id);
+                  const conectat = Boolean(eu?.telegramChatId);
+
+                  return (
+                    <div className="bg-slate-900 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl">
+                      <h2 className="text-center text-xs font-black uppercase text-sky-400 mb-4 tracking-widest">Notificări Telegram</h2>
+                      {conectat ? (
+                        <div className="flex items-center justify-between gap-3 p-4 rounded-2xl border-2 bg-sky-600/20 border-sky-500">
+                          <div className="flex items-center gap-3">
+                            <Send size={22} className="text-sky-300" />
+                            <span className="text-sm font-black uppercase">Conectat</span>
+                          </div>
+                          <button onClick={deconecteazaTelegram} className="text-[10px] font-black uppercase bg-slate-800 px-4 py-2 rounded-xl active:scale-95">Deconectează</button>
+                        </div>
+                      ) : (
+                        <ConectareTelegram
+                          conectare={conectareTelegram}
+                          descriere="Primești pe Telegram mesaj când ești pus sau scos din serviciu și un memento seara."
+                        />
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
