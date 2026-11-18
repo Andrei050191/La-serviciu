@@ -79,6 +79,15 @@ export const motivIndisponibil = ({ persoana, ziKey, pozitie, functie, omPlanifi
   return "";
 };
 
+// Textul mesajelor: la intervenție nu contează numărul poziției (1, 2...).
+const mesajPus = (functie, ziKey) => (numarInterventieDin(functie)
+  ? `Ai fost pus în echipa de intervenție, ${ziKey}.`
+  : `Ai fost pus la serviciu: ${functie}, ${ziKey}.`);
+const mesajScos = (functie, ziKey) => (numarInterventieDin(functie)
+  ? `Ai fost scos din echipa de intervenție, ${ziKey}.`
+  : `Ai fost scos din serviciu: ${functie}, ${ziKey}.`);
+const functieAfisata = (functie) => (numarInterventieDin(functie) ? 'Intervenția' : functie);
+
 const trimiteNotificare = async (personal, { userNumeComplet, mesaj, tip, functie, dataServiciu }) => {
   if (!userNumeComplet || userNumeComplet === ALTA_SUBUNITATE) return;
 
@@ -173,18 +182,18 @@ export const seteazaServiciu = async ({ ziKey, functie, pozitie, valoare, person
     if (valoare && valoare !== ALTA_SUBUNITATE) {
       await trimiteNotificare(personal, {
         userNumeComplet: valoare,
-        mesaj: `Ai fost pus la serviciu: ${functie}, ${ziKey}.`,
+        mesaj: mesajPus(functie, ziKey),
         tip: "serviciu_adaugat",
-        functie,
+        functie: functieAfisata(functie),
         dataServiciu: ziKey
       });
     }
     if (vechiulOmNume && vechiulOmNume !== ALTA_SUBUNITATE) {
       await trimiteNotificare(personal, {
         userNumeComplet: vechiulOmNume,
-        mesaj: `Ai fost scos din serviciu: ${functie}, ${ziKey}.`,
+        mesaj: mesajScos(functie, ziKey),
         tip: "serviciu_scos",
-        functie,
+        functie: functieAfisata(functie),
         dataServiciu: ziKey
       });
     }
@@ -289,9 +298,9 @@ export const seteazaNumarInterventii = async ({ ziKey, numarCurent, numarNou, se
   for (const { om, functie } of scosi) {
     await trimiteNotificare(personal, {
       userNumeComplet: om,
-      mesaj: `Ai fost scos din serviciu: ${functie}, ${ziKey}.`,
+      mesaj: mesajScos(functie, ziKey),
       tip: "serviciu_scos",
-      functie,
+      functie: functieAfisata(functie),
       dataServiciu: ziKey
     });
   }

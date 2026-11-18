@@ -11,12 +11,16 @@ import TelegramAdminPage from './TelegramAdminPage';
 import ServiciileMele from './ServiciileMele';
 import CalendarInterval from './CalendarInterval';
 import GraficeServiciiPage from './GraficeServiciiPage';
+import ConcediuAnual, { RezumatConcediu } from './ConcediuAnual';
+import ConcediiAdminPage from './ConcediiAdminPage';
+import { sumarAn } from './concedii';
 import AnunturiAdminPage from './AnunturiAdminPage';
 import { STATUSURI_ABSENTA, serviciiPlanificateInZile, textConflict } from './verificareServicii';
 
 // Statusurile care se pot pune pe mai multe zile odată.
-const STATUSURI_MULTI_ZILE = ['Concediu', 'Deplasare', 'Foaie de boala', 'Spitalul militar', 'Studii'];
-import { numeFrumos as formatNumeSimplu } from './serviciiConfig';
+const STATUSURI_MULTI_ZILE = ['Deplasare', 'Foaie de boala', 'Spitalul militar', 'Studii'];
+import { numeFrumos as formatNumeSimplu, normalizeServiciiConfigurate, numarInterventieDin, numeCompletDin } from './serviciiConfig';
+import { ALTA_SUBUNITATE, numarInterventiiDinZi } from './planificare';
 import { format, addDays, parse, parseISO, differenceInCalendarDays } from 'date-fns';
 import { useZiCurenta } from './useZiCurenta';
 import { ro } from 'date-fns/locale';
@@ -57,11 +61,15 @@ function App() {
   const [cautareLista, setCautareLista] = useState('');
   const [cautareCantina, setCautareCantina] = useState('');
   const [raportDeschis, setRaportDeschis] = useState(false);
+  const [categoriiDeschise, setCategoriiDeschise] = useState({});
+  const [calendarServicii, setCalendarServicii] = useState({});
+  const [serviciiCfg, setServiciiCfg] = useState([]);
   const [tentativeGresite, setTentativeGresite] = useState(0);
   const [blocatPana, setBlocatPana] = useState(null);
   
   // Selectorul „câte zile” deschis: cheie `${persoanaId}|${status}` (un singur selector deschis odată).
   const [multiDeschis, setMultiDeschis] = useState(null);
+  const [concediuDeschis, setConcediuDeschis] = useState(false);
   const [deLa, setDeLa] = useState('');   // yyyy-MM-dd
   const [panaLa, setPanaLa] = useState('');
   const [setariTelegram, setSetariTelegram] = useState({});
@@ -141,10 +149,16 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const unsubCal = onSnapshot(doc(db, "servicii", "calendar"), (d) => {
+      setCalendarServicii(d.exists() ? (d.data().data || {}) : {});
+    });
+    const unsubCfg = onSnapshot(doc(db, "setari", "servicii"), (d) => {
+      setServiciiCfg(normalizeServiciiConfigurate(d.exists() ? d.data().serviciiConfigurate : []));
+    });
     const unsubServicii = onSnapshot(doc(db, "planificare", "servicii"), (d) => {
       if (d.exists()) setServiciiPlan(d.data());
     });
-    return () => unsubServicii();
+    return () => { unsubServicii(); unsubCal(); unsubCfg(); };
   }, []);
 
   useEffect(() => {
@@ -425,39 +439,79 @@ function App() {
     return `${grad} ${prenume} ${nume}`.trim();
   };
 
+  // Perioada continuă în jurul zilei în care omul are același status (ex. concediu 14.11–28.11).
+  const STATUSURI_CU_PERIOADA = ['Concediu', 'Deplasare', 'Foaie de boala', 'Spitalul militar', 'Studii', 'Zi liberă'];
+  const perioadaStatus = (m, data, status) => {
+    if (!STATUSURI_CU_PERIOADA.includes(status)) return '';
+    let start = data;
+    let sfarsit = data;
+    for (let i = 1; i <= 366; i++) {
+      const d = addDays(data, -i);
+      if (m[`status_${format(d, 'yyyyMMdd')}`] !== status) break;
+      start = d;
+    }
+    for (let i = 1; i <= 366; i++) {
+      const d = addDays(data, i);
+      if (m[`status_${format(d, 'yyyyMMdd')}`] !== status) break;
+      sfarsit = d;
+    }
+    if (start.getTime() === sfarsit.getTime()) return '';
+    return ` (${format(start, 'dd.MM')}–${format(sfarsit, 'dd.MM')})`;
+  };
+
+  const numeDinComplet = (nc) => {
+    const p = echipa.find(m => numeCompletDin(m) === nc);
+    return p ? numePentruRaport(p) : nc;
+  };
+
+  // Serviciile din ziua respectivă, cu oamenii puși (intervenția grupată).
+  const serviciiRaport = (data) => {
+    const zi = calendarServicii[format(data, 'dd.MM.yyyy')] || {};
+    const oameni = zi.oameni || [];
+    const nrInterventii = numarInterventiiDinZi(zi);
+    const rezultat = [];
+    const interventie = [];
+    serviciiCfg
+      .filter(sv => sv.activ !== false && !(numarInterventieDin(sv.nume) > nrInterventii))
+      .forEach(sv => {
+        const om = oameni[sv.pozitie];
+        if (!om || om === ALTA_SUBUNITATE) return; // în raport apar doar oamenii subunității
+        const cine = numeDinComplet(om);
+        if (numarInterventieDin(sv.nume)) interventie.push(cine);
+        else rezultat.push([sv.nume, cine]);
+      });
+    if (interventie.length) rezultat.push(['Intervenția', interventie.join(', ')]);
+    return rezultat;
+  };
+
   const textRaport = (index = ziSelectata) => {
     const { key, data } = optiuniZile[index];
     const categoriiZi = categoriiPentru(key);
-    const dataRaport = format(data, 'dd.MM.yyyy');
-    const linii = [`RAPORT EFECTIV`, `Data: ${dataRaport}`, ``];
+    const linii = [
+      `RAPORT EFECTIV`,
+      `Data: ${format(data, 'dd.MM.yyyy')}`,
+      ``,
+      `Efectiv total: ${echipa.length}`,
+      ``
+    ];
 
     Object.keys(statusConfig).forEach(status => {
       const oameni = categoriiZi[status] || [];
-
       linii.push(`${status}: ${oameni.length}`);
-
-      if (oameni.length > 0) {
-        oameni.forEach(m => {
-          linii.push(`- ${numePentruRaport(m)}`);
-        });
-      } else {
-        linii.push(`- Nu sunt`);
-      }
-
+      oameni.forEach(m => linii.push(`- ${numePentruRaport(m)}${perioadaStatus(m, data, status)}`));
       linii.push(``);
     });
 
-    const oameniCantina = echipa.filter(m => m[`cantina_${key}`] === true);
-
-    linii.push(`Masa la cantină: ${oameniCantina.length}`);
-
-    if (oameniCantina.length > 0) {
-      oameniCantina.forEach(m => {
-        linii.push(`- ${numePentruRaport(m)}`);
-      });
-    } else {
-      linii.push(`- Nu sunt`);
+    const servicii = serviciiRaport(data);
+    if (servicii.length) {
+      linii.push(`SERVICII`);
+      servicii.forEach(([nume, cine]) => linii.push(`- ${nume}: ${cine}`));
+      linii.push(``);
     }
+
+    const oameniCantina = echipa.filter(m => m[`cantina_${key}`] === true);
+    linii.push(`Masa la cantină: ${oameniCantina.length}`);
+    oameniCantina.forEach(m => linii.push(`- ${numePentruRaport(m)}`));
 
     return linii.join('\n');
   };
@@ -487,6 +541,52 @@ function App() {
     }
   };
 
+  const blocRaport = (mereuDeschis = false) => (
+    <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-4">
+      {!mereuDeschis && (
+        <button
+          onClick={() => setRaportDeschis(!raportDeschis)}
+          className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
+        >
+          <FileText size={18} />
+          Generează raport
+        </button>
+      )}
+
+      {(mereuDeschis || raportDeschis) && (
+        <div className={`${mereuDeschis ? '' : 'mt-4 '}bg-slate-950 border border-slate-800 rounded-2xl p-4`}>
+          {mereuDeschis && (
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-3">
+              Raport pentru {optiuniZile[ziSelectata].label.toLowerCase()}, {format(optiuniZile[ziSelectata].data, 'dd.MM.yyyy')} — alege ziua sus
+            </p>
+          )}
+          <textarea
+            readOnly
+            value={textRaport()}
+            className="w-full min-h-[300px] bg-black/30 border border-slate-800 rounded-2xl p-4 text-sm text-white font-mono outline-none"
+          />
+          <button
+            onClick={copiazaRaport}
+            className="mt-3 w-full bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
+          >
+            <Copy size={16} />
+            Copiază raportul
+          </button>
+          {telegramActiv && (
+            <button
+              onClick={trimiteRaportTelegram}
+              disabled={raportSeTrimite}
+              className="mt-3 w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-50 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
+            >
+              <Send size={16} />
+              {raportSeTrimite ? 'Se trimite...' : 'Trimite pe Telegram'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   // Raportul de dimineață și memento-ul de seară pornesc din aplicația oricui e logat.
   const textRaportAziRef = useRef(null);
   useEffect(() => {
@@ -514,7 +614,7 @@ function App() {
     .replace('setari', 'setări')
     .replace('luna', 'luna');
 
-  const paginiDinSetari = ['luna', 'reguli', 'efectiv', 'istoric', 'telegram', 'anunturi', 'grafice'];
+  const paginiDinSetari = ['luna', 'reguli', 'efectiv', 'istoric', 'telegram', 'anunturi', 'grafice', 'concedii', 'raport'];
   const arataInapoiSetari = userLogat?.rol === 'admin' && paginiDinSetari.includes(paginaCurenta);
 
   if (paginaCurenta === 'login') {
@@ -578,6 +678,19 @@ function App() {
 
         <div className="space-y-3 mb-8">
           {((userLogat?.rol === 'user' && paginaCurenta !== 'servicii') || (esteAdminPersonal && paginaCurenta === 'categorii')) && <ServiciileMele persoana={userLive} />}
+          {((userLogat?.rol === 'user' && paginaCurenta !== 'servicii') || (esteAdminPersonal && paginaCurenta === 'categorii')) && (
+            <div id="card-concediu" className="bg-slate-900 rounded-[2.5rem] border border-slate-800 shadow-xl overflow-hidden">
+              <button onClick={() => setConcediuDeschis(!concediuDeschis)} className="w-full p-5 flex items-center justify-between gap-4 text-left active:scale-[0.99] transition-all">
+                <RezumatConcediu persoana={userLive} />
+                {concediuDeschis ? <ChevronUp size={20} className="shrink-0" /> : <ChevronDown size={20} className="shrink-0" />}
+              </button>
+              {concediuDeschis && (
+                <div className="px-5 pb-5">
+                  <ConcediuAnual persoana={userLive} eu onLog={scrieIstoric} />
+                </div>
+              )}
+            </div>
+          )}
           {userLogat?.rol === 'user' && (
             <button onClick={() => { vibreaza(40); setPaginaCurenta(paginaCurenta === 'servicii' ? 'personal' : 'servicii'); }} 
               className="w-full bg-slate-900 border-2 border-slate-800 p-5 rounded-[2rem] flex items-center justify-between shadow-xl active:scale-[0.98] transition-all">
@@ -624,12 +737,16 @@ function App() {
                 onOpenTelegram={telegramActiv ? () => setPaginaCurenta('telegram') : undefined}
                 onOpenAnunturi={() => setPaginaCurenta('anunturi')}
                 onOpenGrafice={() => setPaginaCurenta('grafice')}
+                onOpenConcedii={() => setPaginaCurenta('concedii')}
+                onOpenRaport={() => setPaginaCurenta('raport')}
               />
             )}
             {paginaCurenta === 'istoric' && <IstoricPage />}
             {paginaCurenta === 'telegram' && <TelegramAdminPage onLog={scrieIstoric} persoanaId={esteAdminPersonal ? userLogat.id : null} />}
             {paginaCurenta === 'anunturi' && <AnunturiAdminPage onLog={scrieIstoric} />}
             {paginaCurenta === 'grafice' && <GraficeServiciiPage onLog={scrieIstoric} />}
+            {paginaCurenta === 'concedii' && <ConcediiAdminPage onLog={scrieIstoric} />}
+            {paginaCurenta === 'raport' && blocRaport(true)}
             
             {paginaCurenta === 'lista' && (
               <div className="space-y-4">
@@ -661,7 +778,7 @@ function App() {
                         <div className="p-4 bg-slate-950 border-x border-b border-slate-800 rounded-b-3xl space-y-3">
                           <div className="grid grid-cols-2 gap-2">
                             {Object.keys(statusConfig).map(st => {
-                              const multi = STATUSURI_MULTI_ZILE.includes(st);
+                              const multi = STATUSURI_MULTI_ZILE.includes(st) || st === 'Concediu';
                               const deschis = multiDeschis === `${m.id}|${st}`;
                               return (
                                 <button
@@ -675,7 +792,8 @@ function App() {
                               );
                             })}
                           </div>
-                          {multiDeschis?.startsWith(`${m.id}|`) && selectorZile(m, multiDeschis.split('|')[1])}
+                          {multiDeschis === `${m.id}|Concediu` && <ConcediuAnual persoana={m} eu={false} onLog={scrieIstoric} />}
+                          {multiDeschis?.startsWith(`${m.id}|`) && multiDeschis !== `${m.id}|Concediu` && selectorZile(m, multiDeschis.split('|')[1])}
                         </div>
                       )}
                     </div>
@@ -716,53 +834,36 @@ function App() {
 
             {paginaCurenta === 'categorii' && (
               <div className="space-y-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-4">
-                  <button
-                    onClick={() => setRaportDeschis(!raportDeschis)}
-                    className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
-                  >
-                    <FileText size={18} />
-                    Generează raport
-                  </button>
-
-                  {raportDeschis && (
-                    <div className="mt-4 bg-slate-950 border border-slate-800 rounded-2xl p-4">
-                      <textarea
-                        readOnly
-                        value={textRaport()}
-                        className="w-full min-h-[230px] bg-black/30 border border-slate-800 rounded-2xl p-4 text-sm text-white font-mono outline-none"
-                      />
+                <div className="grid grid-cols-1 gap-3">
+                {Object.entries(categorii).filter(([, oameni]) => oameni.length > 0).map(([numeCat, oameni]) => {
+                  const deschis = categoriiDeschise[numeCat] === true;
+                  return (
+                    <div key={numeCat} className={`bg-slate-900 rounded-[2rem] border ${deschis ? 'border-blue-600/60' : 'border-slate-800'}`}>
                       <button
-                        onClick={copiazaRaport}
-                        className="mt-3 w-full bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
+                        onClick={() => { vibreaza(20); setCategoriiDeschise({ ...categoriiDeschise, [numeCat]: !deschis }); }}
+                        className="w-full p-5 flex justify-between items-center font-black uppercase text-sm active:scale-[0.99] transition-all"
                       >
-                        <Copy size={16} />
-                        Copiază raportul
+                        <div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${statusConfig[numeCat]?.color}`}>{statusConfig[numeCat]?.icon}</div>{numeCat}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black">{oameni.length}</span>
+                          {deschis ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </div>
                       </button>
-                      {telegramActiv && (
-                        <button
-                          onClick={trimiteRaportTelegram}
-                          disabled={raportSeTrimite}
-                          className="mt-3 w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-50 active:scale-[0.98] transition-all rounded-2xl p-4 font-black uppercase text-xs flex items-center justify-center gap-2"
-                        >
-                          <Send size={16} />
-                          {raportSeTrimite ? 'Se trimite...' : 'Trimite pe Telegram'}
-                        </button>
+                      {deschis && (
+                        <div className="grid grid-cols-1 gap-2 px-5 pb-5">
+                          {oameni.map(o => (
+                            <div key={o.id} className="bg-slate-950 p-3 rounded-xl border border-white/5 flex items-center justify-between gap-3">
+                              {formatIdentitate(o)}
+                              {perioadaStatus(o, optiuniZile[ziSelectata].data, numeCat) && (
+                                <span className="text-[10px] font-black text-slate-400 shrink-0">{perioadaStatus(o, optiuniZile[ziSelectata].data, numeCat).replace(/[()]/g, '').trim()}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 gap-4">
-                {Object.entries(categorii).map(([numeCat, oameni]) => (
-                  <div key={numeCat} className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800">
-                    <div className="flex justify-between items-center mb-4 font-black uppercase text-sm">
-                      <div className="flex items-center gap-2"><div className={`p-2 rounded-lg ${statusConfig[numeCat]?.color}`}>{statusConfig[numeCat]?.icon}</div>{numeCat}</div>
-                      <span className="bg-blue-600 px-3 py-1 rounded-full text-xs font-black">{oameni.length}</span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2">{oameni.map(o => <div key={o.id} className="bg-slate-950 p-3 rounded-xl border border-white/5">{formatIdentitate(o)}</div>)}</div>
-                  </div>
-                ))}
+                  );
+                })}
                 </div>
               </div>
             )}
@@ -788,6 +889,30 @@ function App() {
                       const esteStatusDeServiciu = st === "În serviciu" || st === "După serviciu";
                       const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu" || esteStatusDeServiciu;
                       
+                      if (st === 'Concediu') {
+                        return (
+                          <button key={st} disabled={esteBlocat}
+                            onClick={() => {
+                              vibreaza(40);
+                              setConcediuDeschis(true);
+                              setTimeout(() => document.getElementById('card-concediu')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                            }}
+                            className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all
+                              ${activ ? `${statusConfig[st].color} text-white border-white/40 shadow-lg` : 'bg-slate-950 border-slate-800 text-white opacity-70'}
+                              ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
+                            <div className={`p-2 rounded-lg ${activ ? 'bg-white/90 text-black' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
+                            <div className="flex flex-col text-left">
+                              <span className="text-sm uppercase font-black">{st}</span>
+                              <span className="text-[9px] font-bold text-slate-400 normal-case">Planificare pe an · {sumarAn(userLive, new Date().getFullYear()).ramase} zile rămase</span>
+                            </div>
+                            <div className="ml-auto flex items-center gap-2">
+                              {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
+                              {esteBlocat && <Lock size={20} />}
+                            </div>
+                          </button>
+                        );
+                      }
+
                       if (STATUSURI_MULTI_ZILE.includes(st)) {
                         const cheie = `${userLogat.id}|${st}`;
                         const deschis = multiDeschis === cheie;

@@ -48,7 +48,13 @@ export const trimiteMementoPentru = async (data) => {
     if (p.activ === false || !p.telegramChatId) continue;
     const functii = serviciiPersoanaInZi(ziCalendar, numeCompletDin(p), servicii);
     if (!functii.length) continue;
-    const ok = await trimiteTelegram(p.telegramChatId, `📅 Mâine, ${ziText}, ești la serviciu: ${functii.join(', ')}.`);
+    const laInterventie = functii.some(f => numarInterventieDin(f));
+    const altele = functii.filter(f => !numarInterventieDin(f));
+    const ce = [
+      ...(altele.length ? [`la serviciu: ${altele.join(', ')}`] : []),
+      ...(laInterventie ? ['în echipa de intervenție'] : [])
+    ].join(' și ');
+    const ok = await trimiteTelegram(p.telegramChatId, `📅 Mâine, ${ziText}, ești ${ce}.`);
     if (ok) trimise += 1;
   }
   return trimise;
