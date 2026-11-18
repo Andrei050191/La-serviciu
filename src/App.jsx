@@ -13,7 +13,6 @@ import CalendarInterval from './CalendarInterval';
 import GraficeServiciiPage from './GraficeServiciiPage';
 import ConcediuAnual, { RezumatConcediu } from './ConcediuAnual';
 import ConcediiAdminPage from './ConcediiAdminPage';
-import { sumarAn } from './concedii';
 import AnunturiAdminPage from './AnunturiAdminPage';
 import { STATUSURI_ABSENTA, serviciiPlanificateInZile, textConflict } from './verificareServicii';
 
@@ -889,31 +888,7 @@ function App() {
                       const esteStatusDeServiciu = st === "În serviciu" || st === "După serviciu";
                       const esteBlocat = statusCurent === "În serviciu" || statusCurent === "După serviciu" || esteStatusDeServiciu;
                       
-                      if (st === 'Concediu') {
-                        return (
-                          <button key={st} disabled={esteBlocat}
-                            onClick={() => {
-                              vibreaza(40);
-                              setConcediuDeschis(true);
-                              setTimeout(() => document.getElementById('card-concediu')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-                            }}
-                            className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all
-                              ${activ ? `${statusConfig[st].color} text-white border-white/40 shadow-lg` : 'bg-slate-950 border-slate-800 text-white opacity-70'}
-                              ${esteBlocat ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}>
-                            <div className={`p-2 rounded-lg ${activ ? 'bg-white/90 text-black' : 'bg-slate-800'}`}>{statusConfig[st].icon}</div>
-                            <div className="flex flex-col text-left">
-                              <span className="text-sm uppercase font-black">{st}</span>
-                              <span className="text-[9px] font-bold text-slate-400 normal-case">Planificare pe an · {sumarAn(userLive, new Date().getFullYear()).ramase} zile rămase</span>
-                            </div>
-                            <div className="ml-auto flex items-center gap-2">
-                              {activ && !esteBlocat && <Check size={20} strokeWidth={4} />}
-                              {esteBlocat && <Lock size={20} />}
-                            </div>
-                          </button>
-                        );
-                      }
-
-                      if (STATUSURI_MULTI_ZILE.includes(st)) {
+                      if (STATUSURI_MULTI_ZILE.includes(st) || st === 'Concediu') {
                         const cheie = `${userLogat.id}|${st}`;
                         const deschis = multiDeschis === cheie;
                         return (
